@@ -1,16 +1,11 @@
 language: rust
 rust:
-  - stable
   - nightly
-jobs:
-  allow_failures:
-    - rust: stable
 install:
   - cargo install grcov
-  - cargo build --verbose
 script:
-  - cargo test --verbose --all
-  - cargo bench --verbose --all
+  - cargo test --all
+  - cargo bench --all
 branches:
   only:
     - master
