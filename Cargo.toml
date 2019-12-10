@@ -1,0 +1,11 @@
+[package]
+name = "modelflat_bot"
+version = "0.1.0"
+authors = ["modelflat"]
+edition = "2018"
+
+[dependencies]
+ws = { version = "0.9", features = ["ssl"] }
+pest = { version = "2.1" }
+pest_derive = { version = "2.1" }
+phf = { version = "0.8", features = ["macros"] }

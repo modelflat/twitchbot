@@ -1,0 +1,39 @@
+// https://tools.ietf.org/html/rfc1459#section-2.3.1
+// https://modern.ircdocs.horse/
+
+SPACE         = _{ " " }
+SPECIAL       = _{ "-" | "[" | "]" | "\\" | "`" | "^" | "{" | "}" | "_" }
+NONTERM       = _{ !( "\x00" | "\r" | "\n") ~ ANY }
+NONWHITE      = _{ !( "\x00" | "\r" | "\n" | " " ) ~ ANY }
+NONWHITESEM   = _{ !( "\x00" | "\r" | "\n" | " " | ";" ) ~ ANY }
+NONWHITECOL   = _{ !( "\x00" | "\r" | "\n" | " " | ":" ) ~ ANY }
+
+// prefix
+user          = @{ ( ASCII_ALPHA_LOWER | ASCII_DIGIT | "_" )+ }
+host          = @{ ( ASCII_ALPHA_LOWER | ASCII_DIGIT | "_" | "." | "-" )+ }
+nick          = @{ ( ASCII_ALPHA | ASCII_DIGIT | SPECIAL )+ }
+prefix        = { (nick ~ "!" ~ user ~ "@")? ~ host }
+
+// command name
+command       = @{ ASCII_ALPHA_UPPER+ | ( ASCII_DIGIT{3} ) }
+
+// command parameters
+param         = { NONWHITECOL ~ NONWHITE* }
+params        = _{ (SPACE ~ param)* }
+
+// trailing part
+trailing      = { NONTERM* }
+rest          = _{ SPACE ~ ":" ~ trailing }
+
+// IRCv3 tag support
+is_client_tag = @{ "+" }
+vendor        = @{ host }
+tag_key_name  = @{ ( ASCII_ALPHA | ASCII_DIGIT | "-")+ }
+key           = @{ is_client_tag? ~ ( vendor ~ "/" )? ~ tag_key_name }
+value         = @{ NONWHITESEM+ | "" }
+
+tag           = { key ~ ("=" ~ value)? }
+tags          = _{ tag ~ (";" ~ tag)* }
+
+// message
+message       = { ("@" ~ tags ~ SPACE)? ~ (":" ~ prefix ~ SPACE)? ~ command ~ params ~ rest? }

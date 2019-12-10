@@ -1,0 +1,283 @@
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::error::Error;
+
+use pest::Parser;
+
+
+#[derive(Parser)]
+#[grammar = "irc.pest"]
+struct MessageParser;
+
+
+#[derive(Debug)]
+pub enum Prefix<'a> {
+    Full { nick: &'a str, user: &'a str, host: &'a str },
+    Host (&'a str),
+    None
+}
+
+impl Default for Prefix <'_> {
+
+    fn default() -> Self {
+        Prefix::None
+    }
+
+}
+
+impl Display for Prefix <'_> {
+
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Prefix::Full { nick, user, host } => f.write_fmt(format_args!(
+                ":{}!{}@{}", nick, user, host
+            )),
+            Prefix::Host (host) => f.write_fmt(format_args!(
+                ":{}", host
+            )),
+            Prefix::None => Ok(())
+        }
+    }
+
+}
+
+
+#[derive(Debug)]
+pub struct Command<'a> {
+    pub name: &'a str,
+    pub args: Vec<&'a str>,
+}
+
+impl Default for Command <'_> {
+
+    fn default() -> Self {
+        Command {
+            name: "", args: Vec::default()
+        }
+    }
+
+}
+
+impl Display for Command <'_> {
+
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        if self.args.is_empty() {
+            f.write_str(self.name)
+        } else {
+            f.write_fmt(format_args!(
+                "{} {}", self.name, self.args.join(" ")
+            ))
+        }
+    }
+
+}
+
+
+#[derive(Debug)]
+pub struct Message<'a> {
+    // TODO keep tags in a custom-made struct with well-known tags as fields? (phf might help)
+    pub tags: HashMap<&'a str, Option<&'a str>>,
+    pub prefix: Prefix<'a>,
+    pub command: Command<'a>,
+    pub trailing: Option<&'a str>,
+}
+
+impl Message <'_> {
+
+    /// Parses given string into Twitch IRC message.
+    pub fn parse<'a>(raw: &'a str) -> Result<Message<'a>, Box<dyn Error>> {
+        let parsed = MessageParser::parse(Rule::message, raw)?.next().unwrap();
+
+        let mut message = Message::default();
+
+        for pair in parsed.into_inner() {
+            match pair.as_rule() {
+                Rule::tag => {
+                    let mut tag = pair.into_inner();
+                    let key = tag.next().unwrap().as_str();
+                    let val = tag.next().map(|v| v.as_str());
+                    message.tags.insert(key, val);
+                },
+                Rule::prefix => {
+                    let mut prefix = pair.into_inner();
+                    let first = prefix.next().unwrap();
+
+                    match first.as_rule() {
+                        Rule::nick => message.prefix = Prefix::Full {
+                            nick: first.as_str(),
+                            user: prefix.next().unwrap().as_str(),
+                            host: prefix.next().unwrap().as_str()
+                        },
+                        Rule::host =>
+                            message.prefix = Prefix::Host(first.as_str()),
+                        _ => unreachable!()
+                    }
+                },
+                Rule::command =>
+                    message.command.name = pair.as_str(),
+                Rule::param =>
+                    message.command.args.push(pair.as_str()),
+                Rule::trailing =>
+                    message.trailing = Some(pair.as_str()),
+                _ => unreachable!()
+            }
+        }
+
+        Ok(message)
+    }
+
+    fn get_tag_or<'a>(&'a self, key: &'a str, default: &'a str) -> Option<&'a str> {
+        self.tags.get(key).map(|v| v.unwrap_or(default))
+    }
+
+    pub fn room_id(&self) -> Option<&str> {
+        self.get_tag_or("room-id", "")
+    }
+
+    pub fn user_id(&self) -> Option<&str> {
+        self.get_tag_or("user-id", "")
+    }
+
+    pub fn display_name(&self) -> Option<&str> {
+        self.get_tag_or("display-name", match self.prefix {
+            Prefix::Full { user, .. } => user,
+            _ => ""
+        })
+    }
+
+}
+
+impl Default for Message <'_> {
+
+    fn default() -> Self {
+        Message {
+            tags: HashMap::default(),
+            prefix: Prefix::default(),
+            command: Command::default(),
+            trailing: None,
+        }
+    }
+
+}
+
+impl Display for Message <'_> {
+
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        if !self.tags.is_empty() {
+            f.write_str("@")?;
+
+            for (i, (k, v)) in self.tags.iter().enumerate() {
+                match v {
+                    Some(val) => f.write_fmt(format_args!("{}={}", k, val))?,
+                    None => f.write_str(k)?,
+                };
+                if i < self.tags.len() - 1 {
+                    f.write_str(";")?;
+                }
+            }
+
+            f.write_str(" ")?;
+        }
+
+        match &self.prefix {
+            Prefix::None => {},
+            prefix => {
+                prefix.fmt(f)?;
+                f.write_str(" ")?;
+            },
+        }
+
+        self.command.fmt(f)?;
+
+        if let Some(trailing) = self.trailing {
+            f.write_fmt(format_args!(" :{}", trailing))?;
+        }
+
+        Ok(())
+    }
+
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    extern crate test;
+    use test::Bencher;
+
+    #[test]
+    fn test_msg_parse() {
+        let parsed = Message::parse("CAP LS").expect("Failed to parse message");
+        assert_eq!(parsed.command.name, "CAP");
+        assert_eq!(parsed.command.args.len(), 1);
+        assert_eq!(parsed.command.args.first().unwrap(), &"LS");
+    }
+
+    #[test]
+    fn test_msg_parse_with_host_prefix() {
+        let parsed = Message::parse(":host.com CAP LS").expect("Failed to parse message");
+        match parsed.prefix {
+            Prefix::Host (host) => {
+                assert_eq!(host, "host.com");
+            },
+            _ => assert!(false)
+        };
+    }
+
+    #[test]
+    fn test_msg_parse_with_full_prefix() {
+        let parsed = Message::parse(":nick!user@host.com CAP LS").expect("Failed to parse message");
+        match parsed.prefix {
+            Prefix::Full { nick, user, host } => {
+                assert_eq!(nick, "nick");
+                assert_eq!(user, "user");
+                assert_eq!(host, "host.com");
+            },
+            _ => assert!(false)
+        };
+    }
+
+    #[test]
+    fn test_msg_parse_single_tag() {
+        let parsed = Message::parse("@aaa=a_value :host.com CAP LS").expect("Failed to parse message");
+        assert!(!parsed.tags.is_empty());
+        assert_eq!(parsed.tags.get("aaa").expect("Expected key is not present").unwrap(), "a_value");
+    }
+
+    #[test]
+    fn test_msg_parse_multiple_tags() {
+        let parsed = Message::parse("@a=a_value;b;c=c_value :host.com CAP LS").expect("Failed to parse message");
+        assert!(!parsed.tags.is_empty());
+        assert_eq!(parsed.tags.get("a").expect("Expected key is not present").unwrap(), "a_value");
+        assert!(parsed.tags.get("b").expect("Expected key is not present").is_none());
+        assert_eq!(parsed.tags.get("c").expect("Expected key is not present").unwrap(), "c_value");
+    }
+
+    #[test]
+    fn test_msg_parse_trailing() {
+        let parsed = Message::parse(":host.com CAP LS :trailing").expect("Failed to parse message");
+        assert_eq!(parsed.trailing.expect("Trailing should not be None"), "trailing");
+    }
+
+    #[bench]
+    fn bench_msg_parse_simple(b: &mut Bencher) {
+        b.iter(|| Message::parse("CAP LS").expect("Failed to parse message"));
+    }
+
+    #[bench]
+    fn bench_msg_parse_complex(b: &mut Bencher) {
+        let message = "@color=;user-id=123123123;badge-info=;emotes=;display-name=adasdasdasdaaaaa;\
+        room-id=123123123;subscriber=0;turbo=0;badges=;flags=;user-type=;wow-such-a-tag;+asdasdada;\
+        room-id=123123123;subscriber=0;turbo=0;badges=;flags=;user-type=;wow-such-a-tag;+asdasdada;\
+        id=XXXXXXXX-XXXX-XXXX-XXXX-23123123;mod=0;tmi-sent-ts=219319231;vendor.com/key=21931923123 \
+        :user!useruserus@user.very.very.very.very.very.very.very.very.very.very.very.long.hostname \
+        PRIVMSG #channel argument argument argument argument argument argument argument argument11 \
+        :asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdas dasdasdasdadasdasd\
+        asdasdasdasdasdasd asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdadasdasda\
+        asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasda sdasdasdassdasdasda";
+
+        b.iter(|| Message::parse(message).expect("Failed to parse message"));
+    }
+
+}
