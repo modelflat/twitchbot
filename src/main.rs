@@ -9,12 +9,13 @@ extern crate pest_derive;
 
 mod core;
 mod irc;
+mod event;
 
 const TWITCH_IRC_WS: &str = "wss://irc-ws.chat.twitch.tv:443";
 
 fn run(username: &str, password: &str, channels: Vec<String>) -> ws::Result<()> {
     ws::connect(TWITCH_IRC_WS, |out| {
-        core::Client::new(out, username, password, channels.clone()).unwrap()
+        core::Bot::new(out, username, password, channels.clone()).unwrap()
     })
 }
 

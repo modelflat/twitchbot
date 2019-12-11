@@ -7,18 +7,20 @@ use ws::util::Token;
 use phf::phf_map;
 
 use super::irc;
+use super::event;
+
 use std::time::{Instant, Duration};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use crate::event::{MultichannelEventQueue, Event};
+use pest::error::ErrorVariant;
 
 
-const BOT_PREFIX: &str = "<<";
+const BOT_PREFIX: &str = ">>";
 
-const MESSAGE_RANGE_START: usize = 1 << 0;
-const MESSAGE_RANGE_END: usize = 1 << 32;
+const BOT_MESSAGE_TTL: Duration = Duration::from_secs(20);
 
-
-// TODO this module should be refactored as I get insight into async model of ws/mio/rust
+const BOT_CHANNEL_TIMEOUT: Duration = Duration::from_secs(1);
 
 
 #[derive(Clone)]
@@ -32,70 +34,53 @@ static COMMANDS: phf::Map<&'static str, Command> = phf_map! {
     "PING" => Command::Ping,
 };
 
-#[derive(Debug)]
-struct ChannelTimeouts {
-    last_message_sent: Instant,
-    min_delay: Duration,
-}
+// TODO base trait for bots?
 
 
-impl ChannelTimeouts {
-
-    pub fn update(&mut self) {
-        self.last_message_sent = Instant::now();
-    }
-
-    pub fn min_delay_as_of_now(&self) -> u64 {
-        let diff = (Instant::now() - self.last_message_sent);
-        println!("{:?}", self.last_message_sent);
-        if diff > self.min_delay {
-            0
-        } else {
-            (self.min_delay.as_millis() - diff.as_millis()) as u64
-        }
-    }
-
-}
-
-
-impl Default for ChannelTimeouts {
-    fn default() -> Self {
-        ChannelTimeouts {
-            last_message_sent: Instant::now() - Duration::from_secs(1),
-            min_delay: Duration::from_secs(1),
-        }
-    }
-}
-
-
-pub struct Client {
+pub struct Bot {
     socket: ws::Sender,
     username: String,
     channels: Vec<String>,
-    timeouts: HashMap<String, ChannelTimeouts>,
-    messages_to_send: HashMap<Token, (String, String)>,
-    message_token_provider: AtomicUsize,
+
+    channel_to_token: HashMap<String, Token>,
+    message_queue: MultichannelEventQueue<Token, String>
 }
 
 
-impl Client {
+impl Bot {
 
-    pub fn new(socket: ws::Sender, username: &str, password: &str, channels: Vec<String>) -> ws::Result<Client> {
-        let timeouts = channels.iter().map(|ch| (ch.clone(), ChannelTimeouts::default())).collect();
+    pub fn new(socket: ws::Sender, username: &str, password: &str, channels: Vec<String>)
+        -> ws::Result<Bot> {
+        let channel_to_token: HashMap<String, Token> = channels.iter()
+            .enumerate()
+            .map(|(i, ch)| (ch.to_owned(), Token(i)))
+            .collect();
 
-        let mut client = Client {
+        let channels_and_default_timeouts: HashMap<Token, Duration> = channels.iter()
+            .enumerate()
+            .map(|(i, _)| (Token(i), Duration::from_secs(1)))
+            .collect();
+
+        let mut client = Bot {
             socket,
             username: username.to_string(),
             channels,
-            timeouts,
-            messages_to_send: HashMap::new(),
-            message_token_provider: AtomicUsize::new(MESSAGE_RANGE_START)
+            channel_to_token,
+            message_queue: MultichannelEventQueue::new(&channels_and_default_timeouts)
         };
 
         client.login(username, password)?;
         client.join()?;
+        client.initialize_channel_timers()?;
 
         return Ok(client)
+    }
+
+    fn initialize_channel_timers(&mut self) -> ws::Result<()> {
+        for channel in self.channel_to_token.values() {
+            self.socket.timeout(BOT_CHANNEL_TIMEOUT.as_millis() as u64, *channel)?;
+        }
+        Ok(())
     }
 
     fn handle_message<'a>(&mut self, msg: irc::Message<'a>) -> Result<(), Box<dyn Error>> {
@@ -103,7 +88,9 @@ impl Client {
             // this should compile to a jump table
             match command {
                 Command::PrivMsg => {
-                    let channel = msg.command.args.first().ok_or("PRIVMSG: not enough arguments")?;
+                    let channel = msg.command.args.first()
+                        .ok_or("PRIVMSG: not enough arguments")?
+                        .trim_start_matches('#');
 
                     let timestamp: u64 = msg.tag_value("tmi-sent-ts")
                         .ok_or("no timestamp on message")?
@@ -116,7 +103,7 @@ impl Client {
 
                     if self.is_bot_command(message) {
                         println!("COMMAND! {}", msg);
-                        self.send(channel, &format!("echo! {}", message))?;
+                        self.send(channel, &format!("echo! {}", message));
                     } else {
                         println!("[{}] [{}] {}: {}", timestamp, channel, username, message);
                     }
@@ -138,27 +125,6 @@ impl Client {
         self.socket.send("CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership")
     }
 
-    fn send(&mut self, channel: &str, text: &str) -> ws::Result<()> {
-        let message = irc::MessageBuilder::new("PRIVMSG")
-            .with_arg(channel)
-            .with_trailing(text)
-            .string();
-        let token = self.allocate_message_token();
-
-        let channel = channel.trim_start_matches('#');
-
-        self.messages_to_send.insert(token, (channel.to_owned(), message));
-
-        let timeout = self.timeouts
-            .get(channel)
-            .unwrap_or(&ChannelTimeouts::default())
-            .min_delay_as_of_now();
-
-        println!("[system] scheduled message {:?} to be sent in {} ms", token, timeout);
-
-        self.socket.timeout(timeout, token)
-    }
-
     fn join(&mut self) -> ws::Result<()> {
         for channel in &self.channels {
             self.socket.send(format!("JOIN #{}", channel))?;
@@ -166,22 +132,27 @@ impl Client {
         Ok(())
     }
 
+    fn send(&mut self, channel: &str, text: &str) {
+        let message = irc::MessageBuilder::new("PRIVMSG")
+            .with_arg(&format!("#{}", channel))
+            .with_trailing(text)
+            .string();
+
+        self.message_queue.submit(
+            *self.channel_to_token.get(channel).expect("channel not registered"),
+            BOT_MESSAGE_TTL,
+            message
+        );
+    }
+
     fn is_bot_command(&self, msg: &str) -> bool {
         msg.starts_with(BOT_PREFIX) || msg.starts_with(&format!("@{}", self.username))
-    }
-
-    fn allocate_message_token(&self) -> Token {
-        Token(self.message_token_provider.fetch_add(1, Ordering::SeqCst))
-    }
-
-    fn is_message_event(&self, token: Token) -> bool {
-        MESSAGE_RANGE_START <= token.0 && token.0 < MESSAGE_RANGE_END
     }
 
 }
 
 
-impl ws::Handler for Client {
+impl ws::Handler for Bot {
 
     fn on_open(&mut self, _: ws::Handshake) -> ws::Result<()> {
         Ok(())
@@ -206,30 +177,33 @@ impl ws::Handler for Client {
     }
 
     fn on_timeout(&mut self, event: Token) -> ws::Result<()> {
-        match event {
-            message if self.is_message_event(event) => {
-                match self.messages_to_send.remove(&message) {
-                    Some((channel, message)) => {
-                        let mut should_reschedule = false;
-
-                        self.timeouts.entry(channel)
-                            .and_modify(|time| {
-                                time.update();
-                            })
-                            .or_default();
-
-                        self.socket.send(message)?;
-
-                        println!("[system] {:?}", &self.timeouts);
-                        println!("[system] message with token {:?} was sent", event);
-                    },
-                    None => println!("[system] message with token {:?} not found", event),
-                }
+        if event.0 < self.channel_to_token.len() {
+            use event::NextEvent;
+            match self.message_queue.next(event) {
+                NextEvent::Ready(Event { data, ..}) => {
+                    let timeout = self.message_queue.get_min_delay(event).unwrap();
+                    println!("sending message: {}", data);
+                    self.socket.send(data)?;
+                    self.socket.timeout(timeout.as_millis() as u64, event)?;
+                },
+                NextEvent::NotReady(ready_at) => {
+                    let timeout = (Instant::now() - ready_at).as_millis() as u64;
+                    println!("channel {:?} is not ready, retrying in: {:?} ms", event, timeout);
+                    self.socket.timeout(timeout, event)?;
+                },
+                NextEvent::ChannelIsEmpty => {
+                    let timeout = self.message_queue.get_min_delay(event).unwrap();
+                    // println!("channel {:?} is empty, scheduling next poll in: {:?} ms", event, timeout);
+                    self.socket.timeout(timeout.as_millis() as u64, event)?;
+                },
+                NextEvent::ChannelNotFound => {
+                    panic!("channel for token {:?} is not registered in message queue", event)
+                },
             }
-            _ => {
-                println!("[system] unknown event {:?}", event);
-            }
-        };
+            return Ok(())
+        }
+
+        println!("[system] no handler for token {:?}", event);
         Ok(())
     }
 

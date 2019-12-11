@@ -4,15 +4,10 @@
 
 ### TODO:
 
+* Split codebase into library and binary parts
 * Refactor `core.rs` so the TMI is properly abstracted
 * Send PONGs (?)
 * Get rid of `pest` (?)
-* Queue with cooldowns?
-
-### Queue with cooldowns
-
-Take into account:
-
-* Global cooldown.
-* Channel cooldown (slow mode)
-* Queue should 
+* Command system (with permissions)
+* Receive channel timeouts from ROOMSTATE/USERSTATE
+* Proper logging
