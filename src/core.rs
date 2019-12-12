@@ -1,20 +1,20 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::error::Error;
+use std::time::{Instant, Duration};
 
 use ws;
 use ws::util::Token;
 
 use phf::phf_map;
 
-use super::irc;
-use super::event;
-
-use std::time::{Instant, Duration};
-
-use std::sync::atomic::{AtomicUsize, Ordering};
+use crate::irc;
+use crate::event;
 use crate::event::{MultichannelEventQueue, Event};
-use pest::error::ErrorVariant;
+use crate::util::modify_message;
+use crate::message_history::LastMessages;
 
+
+// TODO all of these should be configurable
 
 const BOT_PREFIX: &str = ">>";
 
@@ -38,77 +38,6 @@ static COMMANDS: phf::Map<&'static str, Command> = phf_map! {
 
 // TODO base trait for bots?
 
-struct HistoryEntry {
-    ts: Instant,
-    msg: String,
-    times_found: usize,
-}
-
-// TODO improve this struct and extract into separate module
-// this is a prototype that is far from optimal
-// ideally we don't need to store actual messages -- can just check
-// hashes or something like this
-struct LastMessages {
-    messages: HashMap<Token, VecDeque<HistoryEntry>>,
-    ttl: Duration,
-}
-
-impl LastMessages {
-
-    fn new(channel_tokens: Vec<Token>, ttl: Duration) -> LastMessages {
-        LastMessages {
-            messages: channel_tokens.into_iter().map(|c| (c, VecDeque::new())).collect(),
-            ttl
-        }
-    }
-
-    /// Adds message to a channel's queue.
-    pub fn push(&mut self, channel: Token, message: String) -> Option<()> {
-        self.messages.get_mut(&channel).map(|queue| queue.push_back(
-            HistoryEntry { ts: Instant::now(), msg: message, times_found: 0 }
-        ))
-    }
-
-    /// Checks if a given message is present in the history.
-    /// All messages that are too old are removed from the queue.
-    ///
-    /// The number of items this message was searched for and found is returned.
-    pub fn has_message(&mut self, channel: Token, message: &str) -> Option<usize> {
-        let ttl = self.ttl;
-        self.messages.get_mut(&channel).map(|queue| {
-            let now = Instant::now();
-            while let Some(HistoryEntry { ts, .. }) = queue.front() {
-                if *ts + ttl < now {
-                    let _ = queue.pop_front().unwrap();
-                } else {
-                    break;
-                }
-            }
-
-            queue.iter_mut()
-                .find(|msg| msg.msg == message)
-                .map(|msg| {
-                    msg.times_found += 1;
-                    msg.times_found
-                })
-                .unwrap_or(0)
-        })
-    }
-
-}
-
-// TODO move to util module
-fn modify_message(message: &mut String, n: usize) {
-    const SUFFIX: [char; 4] = ['\u{e0000}', '\u{e0002}', '\u{e0003}', '\u{e0004}'];
-
-    if n < SUFFIX.len() {
-        message.push(SUFFIX[n]);
-    } else {
-        // in this case, we could use the power of combinatorics to append several
-        // chars to message. 4^4 possible combinations should have us covered.
-    }
-}
-
 
 pub struct Bot {
     socket: ws::Sender,
@@ -120,7 +49,7 @@ pub struct Bot {
     token_to_channel: HashMap<Token, String>,
 
     message_queue: MultichannelEventQueue<Token, String>,
-    message_history: LastMessages,
+    message_history: LastMessages<Token>,
 }
 
 

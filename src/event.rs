@@ -1,6 +1,6 @@
-use std::collections::{HashMap, BinaryHeap, VecDeque};
+use std::collections::{HashMap, BinaryHeap};
 use std::time::{Instant, Duration};
-use std::cmp::{Ordering, min};
+use std::cmp::Ordering;
 use std::hash::Hash;
 
 #[derive(Debug)]
@@ -105,7 +105,6 @@ impl<Token, Data> MultichannelEventQueue<Token, Data>
         Token: Hash + Eq + Copy
 {
     pub fn new(channels: &HashMap<Token, Duration>) -> MultichannelEventQueue<Token, Data> {
-        let now = Instant::now();
         MultichannelEventQueue {
             channels: channels.iter()
                 .map(|(tok, conf)| { (*tok, Channel::new(*conf)) })

@@ -1,23 +1,18 @@
-#![feature(test)]
-
 use std::env;
-use ws;
 
-extern crate pest;
-#[macro_use]
-extern crate pest_derive;
+use ws::connect;
+use modelflat_bot::core::Bot;
 
-mod core;
-mod irc;
-mod event;
 
 const TWITCH_IRC_WS: &str = "wss://irc-ws.chat.twitch.tv:443";
 
+
 fn run(username: &str, password: &str, channels: Vec<String>) -> ws::Result<()> {
-    ws::connect(TWITCH_IRC_WS, |out| {
-        core::Bot::new(out, username, password, channels.clone()).unwrap()
+    connect(TWITCH_IRC_WS, |out| {
+        Bot::new(out, username, password, channels.clone()).unwrap()
     })
 }
+
 
 fn main() {
     let username = env::var("TWITCH_USERNAME")

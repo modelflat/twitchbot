@@ -4,6 +4,13 @@ version = "0.1.0"
 authors = ["modelflat"]
 edition = "2018"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "modelflat_bot"
+path = "app/main.rs"
+
 [dependencies]
 ws = { version = "0.9", features = ["ssl"] }
 pest = { version = "2.1" }
