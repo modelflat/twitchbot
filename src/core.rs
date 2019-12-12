@@ -11,7 +11,7 @@ use crate::irc;
 use crate::event;
 use crate::event::{MultichannelEventQueue, Event};
 use crate::util::modify_message;
-use crate::message_history::LastMessages;
+use crate::history::History;
 
 
 // TODO all of these should be configurable
@@ -49,7 +49,7 @@ pub struct Bot {
     token_to_channel: HashMap<Token, String>,
 
     message_queue: MultichannelEventQueue<Token, String>,
-    message_history: LastMessages<Token>,
+    message_history: History<Token, String>,
 }
 
 
@@ -82,7 +82,7 @@ impl Bot {
             channel_to_token,
             token_to_channel,
             message_queue: MultichannelEventQueue::new(&channels_and_default_timeouts),
-            message_history: LastMessages::new(channel_tokens, BOT_MESSAGE_HISTORY_TTL),
+            message_history: History::new(channel_tokens, BOT_MESSAGE_HISTORY_TTL),
         };
 
         client.login(username, password)?;
@@ -198,7 +198,7 @@ impl ws::Handler for Bot {
             match self.message_queue.next(event) {
                 NextEvent::Ready(Event { mut data, ..}) => {
                     let timeout = self.message_queue.get_min_delay(event).unwrap();
-                    let times = self.message_history.has_message(event, &data)
+                    let times = self.message_history.contains(event, &data)
                         .expect("no history for channel");
 
                     if times > 0 {

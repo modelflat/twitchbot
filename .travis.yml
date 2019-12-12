@@ -15,6 +15,7 @@ script:
       --output-type coveralls+ \
       --llvm --branch --ignore-not-existing \
       --ignore "/*"  \
+      --ignore "app/*"  \
       --output-file codecov.json \
       --token $CODECOV_TOKEN \
       --commit-sha "$(git rev-parse HEAD)";

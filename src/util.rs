@@ -1,11 +1,12 @@
 
 pub fn modify_message(message: &mut String, n: usize) {
-    const SUFFIX: [char; 4] = ['\u{e0000}', '\u{e0002}', '\u{e0003}', '\u{e0004}'];
+    const SUFFIX: [char; 8] = [
+        '\u{e0000}', '\u{e0002}', '\u{e0003}', '\u{e0004}',
+        '\u{e0005}', '\u{e0006}', '\u{e0007}', '\u{e0008}',
+    ];
 
     if n < SUFFIX.len() {
         message.push(SUFFIX[n]);
-    } else {
-        // in this case, we could use the power of combinatorics to append several
-        // chars to message. 4^4 possible combinations should have us covered.
     }
+
 }

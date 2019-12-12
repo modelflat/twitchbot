@@ -9,4 +9,4 @@ pub mod irc;
 pub mod event;
 pub mod commands;
 pub mod util;
-pub mod message_history;
+pub mod history;
