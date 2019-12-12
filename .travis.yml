@@ -6,12 +6,21 @@ install:
 script:
   - export CARGO_INCREMENTAL=0
   - export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Zno-landing-pads"
-  - cargo bench --all
-  - cargo test --all --verbose
+  - cargo build
+  - cargo test --all
   - |
-    zip -0 ccov.zip `find . \( -name "twitchbot*.gc*" \) -print`;
-    ./grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info;
-    bash <(curl -s https://codecov.io/bash) -f lcov.info;
+    zip -0 ccov.zip `find . \( -name "modelflat_bot*.gc*" \) -print`;
+    grcov ccov.zip \
+      --source-dir . \
+      --output-type coveralls+ \
+      --llvm --branch --ignore-not-existing \
+      --ignore "/*"  \
+      --output-file codecov.json \
+      --token $CODECOV_TOKEN \
+      --commit-sha "$(git rev-parse HEAD)";
+    bash <(curl -s https://codecov.io/bash) -f codecov.json;
+  # do bench last
+  - cargo bench --all
 branches:
   only:
     - master
