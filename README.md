@@ -6,8 +6,8 @@
 
 * Split codebase into library and binary parts
 * Refactor `core.rs` so the TMI is properly abstracted
-* Send PONGs (?)
 * Get rid of `pest` (?)
 * Command system (with permissions)
 * Receive channel timeouts from ROOMSTATE/USERSTATE
 * Proper logging
+* Figure out why sometimes messages are sent too quickly (might be bug in EventQueue) 

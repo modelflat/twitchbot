@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 
 use ws;
@@ -20,7 +20,9 @@ const BOT_PREFIX: &str = ">>";
 
 const BOT_MESSAGE_TTL: Duration = Duration::from_secs(20);
 
-const BOT_CHANNEL_TIMEOUT: Duration = Duration::from_secs(1);
+const BOT_MESSAGE_HISTORY_TTL: Duration = Duration::from_secs(30);
+
+const BOT_CHANNEL_TIMEOUT: Duration = Duration::from_millis(2000);
 
 
 #[derive(Clone)]
@@ -36,14 +38,89 @@ static COMMANDS: phf::Map<&'static str, Command> = phf_map! {
 
 // TODO base trait for bots?
 
+struct HistoryEntry {
+    ts: Instant,
+    msg: String,
+    times_found: usize,
+}
+
+// TODO improve this struct and extract into separate module
+// this is a prototype that is far from optimal
+// ideally we don't need to store actual messages -- can just check
+// hashes or something like this
+struct LastMessages {
+    messages: HashMap<Token, VecDeque<HistoryEntry>>,
+    ttl: Duration,
+}
+
+impl LastMessages {
+
+    fn new(channel_tokens: Vec<Token>, ttl: Duration) -> LastMessages {
+        LastMessages {
+            messages: channel_tokens.into_iter().map(|c| (c, VecDeque::new())).collect(),
+            ttl
+        }
+    }
+
+    /// Adds message to a channel's queue.
+    pub fn push(&mut self, channel: Token, message: String) -> Option<()> {
+        self.messages.get_mut(&channel).map(|queue| queue.push_back(
+            HistoryEntry { ts: Instant::now(), msg: message, times_found: 0 }
+        ))
+    }
+
+    /// Checks if a given message is present in the history.
+    /// All messages that are too old are removed from the queue.
+    ///
+    /// The number of items this message was searched for and found is returned.
+    pub fn has_message(&mut self, channel: Token, message: &str) -> Option<usize> {
+        let ttl = self.ttl;
+        self.messages.get_mut(&channel).map(|queue| {
+            let now = Instant::now();
+            while let Some(HistoryEntry { ts, .. }) = queue.front() {
+                if *ts + ttl < now {
+                    let _ = queue.pop_front().unwrap();
+                } else {
+                    break;
+                }
+            }
+
+            queue.iter_mut()
+                .find(|msg| msg.msg == message)
+                .map(|msg| {
+                    msg.times_found += 1;
+                    msg.times_found
+                })
+                .unwrap_or(0)
+        })
+    }
+
+}
+
+// TODO move to util module
+fn modify_message(message: &mut String, n: usize) {
+    const SUFFIX: [char; 4] = ['\u{e0000}', '\u{e0002}', '\u{e0003}', '\u{e0004}'];
+
+    if n < SUFFIX.len() {
+        message.push(SUFFIX[n]);
+    } else {
+        // in this case, we could use the power of combinatorics to append several
+        // chars to message. 4^4 possible combinations should have us covered.
+    }
+}
+
 
 pub struct Bot {
     socket: ws::Sender,
     username: String,
     channels: Vec<String>,
 
+    // TODO is there a better way to keep those
     channel_to_token: HashMap<String, Token>,
-    message_queue: MultichannelEventQueue<Token, String>
+    token_to_channel: HashMap<Token, String>,
+
+    message_queue: MultichannelEventQueue<Token, String>,
+    message_history: LastMessages,
 }
 
 
@@ -51,10 +128,18 @@ impl Bot {
 
     pub fn new(socket: ws::Sender, username: &str, password: &str, channels: Vec<String>)
         -> ws::Result<Bot> {
+
+        // TODO this seems non-optimal
         let channel_to_token: HashMap<String, Token> = channels.iter()
             .enumerate()
             .map(|(i, ch)| (ch.to_owned(), Token(i)))
             .collect();
+        let token_to_channel: HashMap<Token, String> = channels.iter()
+            .enumerate()
+            .map(|(i, ch)| (Token(i), ch.to_owned()))
+            .collect();
+
+        let channel_tokens = channel_to_token.values().cloned().collect();
 
         let channels_and_default_timeouts: HashMap<Token, Duration> = channels.iter()
             .enumerate()
@@ -66,7 +151,9 @@ impl Bot {
             username: username.to_string(),
             channels,
             channel_to_token,
-            message_queue: MultichannelEventQueue::new(&channels_and_default_timeouts)
+            token_to_channel,
+            message_queue: MultichannelEventQueue::new(&channels_and_default_timeouts),
+            message_history: LastMessages::new(channel_tokens, BOT_MESSAGE_HISTORY_TTL),
         };
 
         client.login(username, password)?;
@@ -104,8 +191,13 @@ impl Bot {
                     if self.is_bot_command(message) {
                         println!("COMMAND! {}", msg);
                         self.send(channel, &format!("echo! {}", message));
+                        self.send(channel, &format!("echo! {}", message));
+                        self.send(channel, &format!("echo! {}", message));
+                        self.send(channel, &format!("echo! {}", message));
+                        self.send(channel, &format!("echo! {}", message));
                     } else {
-                        println!("[{}] [{}] {}: {}", timestamp, channel, username, message);
+                        let bytes: Vec<u8> = message.bytes().collect();
+                        println!("[{}] [{}] {}: {:?}", timestamp, channel, username, bytes);
                     }
                 },
                 Command::Ping => {
@@ -133,15 +225,10 @@ impl Bot {
     }
 
     fn send(&mut self, channel: &str, text: &str) {
-        let message = irc::MessageBuilder::new("PRIVMSG")
-            .with_arg(&format!("#{}", channel))
-            .with_trailing(text)
-            .string();
-
         self.message_queue.submit(
             *self.channel_to_token.get(channel).expect("channel not registered"),
             BOT_MESSAGE_TTL,
-            message
+            text.to_owned()
         );
     }
 
@@ -180,11 +267,29 @@ impl ws::Handler for Bot {
         if event.0 < self.channel_to_token.len() {
             use event::NextEvent;
             match self.message_queue.next(event) {
-                NextEvent::Ready(Event { data, ..}) => {
+                NextEvent::Ready(Event { mut data, ..}) => {
                     let timeout = self.message_queue.get_min_delay(event).unwrap();
-                    println!("sending message: {}", data);
-                    self.socket.send(data)?;
+                    let times = self.message_history.has_message(event, &data)
+                        .expect("no history for channel");
+
+                    if times > 0 {
+                        // modify message so it can be sent
+                        modify_message(&mut data, times - 1)
+                    }
+
+                    let channel = self.token_to_channel.get(&event)
+                        .expect("no such channel"); // TODO there are many checks like this one, simplify?
+
+                    let message = irc::MessageBuilder::new("PRIVMSG")
+                        .with_arg(&format!("#{}", channel))
+                        .with_trailing(&data)
+                        .string();
+
+                    println!("sending message: {}", message);
+
+                    self.socket.send(message)?;
                     self.socket.timeout(timeout.as_millis() as u64, event)?;
+                    self.message_history.push(event, data);
                 },
                 NextEvent::NotReady(ready_at) => {
                     let timeout = (Instant::now() - ready_at).as_millis() as u64;
