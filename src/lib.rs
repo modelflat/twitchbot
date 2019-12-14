@@ -1,5 +1,4 @@
 #![feature(test)]
-
 pub mod core;
 pub mod irc;
 pub mod event;
