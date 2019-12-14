@@ -2,12 +2,6 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::error::Error;
 
-use pest::Parser;
-
-#[derive(Parser)]
-#[grammar = "irc.pest"]
-struct MessageParser;
-
 
 type Tags<'a> = BTreeMap<&'a str, Option<&'a str>>;
 
@@ -98,50 +92,8 @@ pub struct Message<'a> {
 
 impl Message <'_> {
 
-    /// Parses given string into Twitch IRC message.
-    pub fn parse<'a>(raw: &'a str) -> Result<Message<'a>, Box<dyn Error>> {
-        let parsed = MessageParser::parse(Rule::message, raw)?.next().unwrap();
-
-        let mut message = Message::default();
-
-        for pair in parsed.into_inner() {
-            match pair.as_rule() {
-                Rule::tag => {
-                    let mut tag = pair.into_inner();
-                    let key = tag.next().unwrap().as_str();
-                    let val = tag.next().map(|v| v.as_str());
-                    message.tags.insert(key, val);
-                },
-                Rule::prefix => {
-                    let mut prefix = pair.into_inner();
-                    let first = prefix.next().unwrap();
-
-                    match first.as_rule() {
-                        Rule::nick => message.prefix = Prefix::Full {
-                            nick: first.as_str(),
-                            user: prefix.next().unwrap().as_str(),
-                            host: prefix.next().unwrap().as_str()
-                        },
-                        Rule::host =>
-                            message.prefix = Prefix::Host(first.as_str()),
-                        _ => unreachable!()
-                    }
-                },
-                Rule::command =>
-                    message.command.name = pair.as_str(),
-                Rule::param =>
-                    message.command.args.push(pair.as_str()),
-                Rule::trailing =>
-                    message.trailing = Some(pair.as_str()),
-                _ => unreachable!()
-            }
-        }
-
-        Ok(message)
-    }
-
     /// Parses given string into Twitch IRC message, but does it faster than "pest".
-    pub fn parse_fast<'a>(raw: &'a str) -> Result<Message<'a>, Box<dyn Error>> {
+    pub fn parse<'a>(raw: &'a str) -> Result<Message<'a>, Box<dyn Error>> {
 
         fn parse_tags(raw_tags: &str) -> Tags {
             // tags are conveniently separated by a semicolon
@@ -332,27 +284,8 @@ mod tests {
     }
 
     #[test]
-    fn test_msg_parse_fast() {
-        let parsed = Message::parse_fast("CAP LS").expect("Failed to parse message");
-        assert_eq!(parsed.command.name, "CAP");
-        assert_eq!(parsed.command.args.len(), 1);
-        assert_eq!(parsed.command.args.first().unwrap(), &"LS");
-    }
-
-    #[test]
     fn test_msg_parse_with_host_prefix() {
         let parsed = Message::parse(":host.com CAP LS").expect("Failed to parse message");
-        match parsed.prefix {
-            Prefix::Host (host) => {
-                assert_eq!(host, "host.com");
-            },
-            _ => assert!(false)
-        };
-    }
-
-    #[test]
-    fn test_msg_parse_fast_with_host_prefix() {
-        let parsed = Message::parse_fast(":host.com CAP LS").expect("Failed to parse message");
         match parsed.prefix {
             Prefix::Host (host) => {
                 assert_eq!(host, "host.com");
@@ -375,28 +308,8 @@ mod tests {
     }
 
     #[test]
-    fn test_msg_parse_fast_with_full_prefix() {
-        let parsed = Message::parse_fast(":nick!user@host.com CAP LS").expect("Failed to parse message");
-        match parsed.prefix {
-            Prefix::Full { nick, user, host } => {
-                assert_eq!(nick, "nick");
-                assert_eq!(user, "user");
-                assert_eq!(host, "host.com");
-            },
-            _ => assert!(false)
-        };
-    }
-
-    #[test]
     fn test_msg_parse_single_tag() {
         let parsed = Message::parse("@aaa=a_value :host.com CAP LS").expect("Failed to parse message");
-        assert!(!parsed.tags.is_empty());
-        assert_eq!(parsed.tags.get("aaa").expect("Expected key is not present").unwrap(), "a_value");
-    }
-
-    #[test]
-    fn test_msg_parse_fast_single_tag() {
-        let parsed = Message::parse_fast("@aaa=a_value :host.com CAP LS").expect("Failed to parse message");
         assert!(!parsed.tags.is_empty());
         assert_eq!(parsed.tags.get("aaa").expect("Expected key is not present").unwrap(), "a_value");
     }
@@ -411,23 +324,8 @@ mod tests {
     }
 
     #[test]
-    fn test_msg_parse_fast_multiple_tags() {
-        let parsed = Message::parse_fast("@a=a_value;b;c=c_value :host.com CAP LS").expect("Failed to parse message");
-        assert!(!parsed.tags.is_empty());
-        assert_eq!(parsed.tags.get("a").expect("Expected key is not present").unwrap(), "a_value");
-        assert!(parsed.tags.get("b").expect("Expected key is not present").is_none());
-        assert_eq!(parsed.tags.get("c").expect("Expected key is not present").unwrap(), "c_value");
-    }
-
-    #[test]
     fn test_msg_parse_trailing() {
         let parsed = Message::parse(":host.com CAP LS :trailing").expect("Failed to parse message");
-        assert_eq!(parsed.trailing.expect("Trailing should not be None"), "trailing");
-    }
-
-    #[test]
-    fn test_msg_parse_fast_trailing() {
-        let parsed = Message::parse_fast(":host.com CAP LS :trailing").expect("Failed to parse message");
         assert_eq!(parsed.trailing.expect("Trailing should not be None"), "trailing");
     }
 
@@ -435,12 +333,6 @@ mod tests {
     fn bench_msg_parse_simple(b: &mut Bencher) {
         b.iter(|| Message::parse("CAP LS").expect("Failed to parse message"));
     }
-
-    #[bench]
-    fn bench_msg_parse_fast_simple(b: &mut Bencher) {
-        b.iter(|| Message::parse_fast("CAP LS").expect("Failed to parse message"));
-    }
-
 
     #[bench]
     fn bench_msg_parse_complex(b: &mut Bencher) {
@@ -455,21 +347,6 @@ mod tests {
         asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasda sdasdasdassdasdasda";
 
         b.iter(|| Message::parse(message).expect("Failed to parse message"));
-    }
-
-    #[bench]
-    fn bench_msg_parse_fast_complex(b: &mut Bencher) {
-        let message = "@color=;user-id=123123123;badge-info=;emotes=;display-name=adasdasdasdaaaaa;\
-        room-id=123123123;subscriber=0;turbo=0;badges=;flags=;user-type=;wow-such-a-tag;+asdasdada;\
-        room-id=123123123;subscriber=0;turbo=0;badges=;flags=;user-type=;wow-such-a-tag;+asdasdada;\
-        id=XXXXXXXX-XXXX-XXXX-XXXX-23123123;mod=0;tmi-sent-ts=219319231;vendor.com/key=21931923123 \
-        :user!useruserus@user.very.very.very.very.very.very.very.very.very.very.very.long.hostname \
-        PRIVMSG #channel argument argument argument argument argument argument argument argument11 \
-        :asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdas dasdasdasdadasdasd\
-        asdasdasdasdasdasd asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdadasdasda\
-        asdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasdasda sdasdasdassdasdasda";
-
-        b.iter(|| Message::parse_fast(message).expect("Failed to parse message"));
     }
 
 }

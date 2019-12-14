@@ -172,7 +172,7 @@ impl ws::Handler for Bot {
         match msg {
             ws::Message::Text(msg) => {
                 for part in msg.split_terminator("\r\n") {
-                    match irc::Message::parse_fast(part) {
+                    match irc::Message::parse(part) {
                         Ok(message) => if let Err(err) = self.handle_message(message) {
                             eprintln!("Handling error: {:?}", err);
                         },
