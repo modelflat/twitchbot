@@ -2,6 +2,7 @@ use std::collections::{HashMap, BinaryHeap};
 use std::time::{Instant, Duration};
 use std::cmp::Ordering;
 use std::hash::Hash;
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub struct Event<T> {
@@ -37,7 +38,6 @@ impl <T> Ord for Event<T> {
 #[derive(Debug)]
 pub enum NewEvent {
     Created,
-    ChannelNotFound,
 }
 
 /// Represents the result of retrieving an event from event queue.
@@ -49,8 +49,6 @@ pub enum NextEvent<T> {
     NotReady(Instant),
     /// There are no events in the channel.
     ChannelIsEmpty,
-    /// There is no channel with provided token.
-    ChannelNotFound,
 }
 
 /// An event channel (or "queue").
@@ -95,14 +93,22 @@ impl <Data> Channel <Data> {
 
 }
 
-/// A very simple multi-channel event queue. Not thread-safe.
+/// Utility function to panic when channel token is not recognized.
+fn no_such_channel_panic<Token: Debug>(channel: Token) -> ! {
+    panic!("EventQueue: no such channel - '{:?}'!", channel)
+}
+
+/// A very simple multi-channel event queue. Not thread-safe, and is not supposed
+/// to work in a concurrent environment.
 pub struct MultichannelEventQueue<Token, Data> {
     channels: HashMap<Token, Channel<Data>>,
 }
 
 impl<Token, Data> MultichannelEventQueue<Token, Data>
     where
-        Token: Hash + Eq + Copy
+        Token: Hash + Eq + Copy + Debug
+    // TODO its weird to require debug on Token
+    // ...but I want my panics to be informative. Is there another way?
 {
     pub fn new(channels: &HashMap<Token, Duration>) -> MultichannelEventQueue<Token, Data> {
         MultichannelEventQueue {
@@ -112,33 +118,44 @@ impl<Token, Data> MultichannelEventQueue<Token, Data>
         }
     }
 
+    /// Submits new event into the queue.
+    ///
+    /// Panics if channel is not recognized.
     pub fn submit(&mut self, channel: Token, ttl: Duration, data: Data) -> NewEvent {
-        match self.channels.get_mut(&channel) {
-            Some(channel) => {
+        self.channels.get_mut(&channel)
+            .map(|channel| {
                 let timestamp = Instant::now();
                 channel.queue.push(Event { timestamp, ttl, data });
                 NewEvent::Created
-            }
-            None => NewEvent::ChannelNotFound,
-        }
+            })
+            .unwrap_or_else(|| no_such_channel_panic(channel))
     }
 
+    /// Retrieves next event from the queue. Drops expired events upon encountering.
+    ///
+    /// Panics if channel is not recognized.
     pub fn next(&mut self, channel: Token) -> NextEvent<Data> {
-        match self.channels.get_mut(&channel) {
-            Some(channel) => channel.get_first_non_expired(),
-            None => NextEvent::ChannelNotFound,
-        }
+        self.channels.get_mut(&channel)
+            .map(|channel| channel.get_first_non_expired())
+            .unwrap_or_else(|| no_such_channel_panic(channel))
     }
 
-    pub fn get_min_delay(&self, channel: Token) -> Option<Duration> {
-        self.channels.get(&channel).map(|ch| ch.min_delay)
+    /// Returns minimal delay set for a channel.
+    ///
+    /// Panics if channel is not recognized.
+    pub fn get_min_delay(&self, channel: Token) -> Duration {
+        self.channels.get(&channel)
+            .map(|channel| channel.min_delay)
+            .unwrap_or_else(|| no_such_channel_panic(channel))
     }
 
-    pub fn set_min_delay(&mut self, channel: Token, min_delay: Duration) -> Option<()> {
-        self.channels.get_mut(&channel).and_then(|ch| {
-            ch.min_delay = min_delay;
-            Some(())
-        })
+    /// Sets minimal delay for a channel.
+    ///
+    /// Panics if channel is not recognized.
+    pub fn set_min_delay(&mut self, channel: Token, min_delay: Duration) {
+        self.channels.get_mut(&channel)
+            .map(|channel| channel.min_delay = min_delay)
+            .unwrap_or_else(|| no_such_channel_panic(channel))
     }
 }
 

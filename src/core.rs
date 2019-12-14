@@ -22,7 +22,7 @@ const BOT_MESSAGE_TTL: Duration = Duration::from_secs(20);
 
 const BOT_MESSAGE_HISTORY_TTL: Duration = Duration::from_secs(30);
 
-const BOT_CHANNEL_TIMEOUT: Duration = Duration::from_millis(2000);
+const BOT_CHANNEL_TIMEOUT: Duration = Duration::from_millis(1500);
 
 
 #[derive(Clone)]
@@ -119,11 +119,7 @@ impl Bot {
 
                     if self.is_bot_command(message) {
                         println!("COMMAND! {}", msg);
-                        self.send(channel, &format!("echo! {}", message));
-                        self.send(channel, &format!("echo! {}", message));
-                        self.send(channel, &format!("echo! {}", message));
-                        self.send(channel, &format!("echo! {}", message));
-                        self.send(channel, &format!("echo! {}", message));
+                        self.send(channel, format!("echo! {}", message));
                     } else {
                         let bytes: Vec<u8> = message.bytes().collect();
                         println!("[{}] [{}] {}: {:?}", timestamp, channel, username, bytes);
@@ -140,6 +136,7 @@ impl Bot {
         Ok(())
     }
 
+    /// Performs log-in into twitch IRC.
     fn login(&mut self, username: &str, password: &str) -> ws::Result<()> {
         self.socket.send(format!("PASS oauth:{}", password))?;
         self.socket.send(format!("NICK {}", username))?;
@@ -153,12 +150,9 @@ impl Bot {
         Ok(())
     }
 
-    fn send(&mut self, channel: &str, text: &str) {
-        self.message_queue.submit(
-            *self.channel_to_token.get(channel).expect("channel not registered"),
-            BOT_MESSAGE_TTL,
-            text.to_owned()
-        );
+    fn send(&mut self, channel: &str, text: String) {
+        let channel = *self.channel_to_token.get(channel).expect("channel not registered");
+        self.message_queue.submit(channel, BOT_MESSAGE_TTL, text);
     }
 
     fn is_bot_command(&self, msg: &str) -> bool {
@@ -197,17 +191,15 @@ impl ws::Handler for Bot {
             use event::NextEvent;
             match self.message_queue.next(event) {
                 NextEvent::Ready(Event { mut data, ..}) => {
-                    let timeout = self.message_queue.get_min_delay(event).unwrap();
-                    let times = self.message_history.contains(event, &data)
-                        .expect("no history for channel");
+                    let timeout = self.message_queue.get_min_delay(event);
+                    let times_sent = self.message_history.contains(event, &data);
 
-                    if times > 0 {
+                    if times_sent > 0 {
                         // modify message so it can be sent
-                        modify_message(&mut data, times - 1)
+                        modify_message(&mut data, times_sent - 1)
                     }
 
-                    let channel = self.token_to_channel.get(&event)
-                        .expect("no such channel"); // TODO there are many checks like this one, simplify?
+                    let channel = self.token_to_channel.get(&event).expect("No such channel");
 
                     let message = irc::MessageBuilder::new("PRIVMSG")
                         .with_arg(&format!("#{}", channel))
@@ -226,12 +218,9 @@ impl ws::Handler for Bot {
                     self.socket.timeout(timeout, event)?;
                 },
                 NextEvent::ChannelIsEmpty => {
-                    let timeout = self.message_queue.get_min_delay(event).unwrap();
+                    let timeout = self.message_queue.get_min_delay(event);
                     // println!("channel {:?} is empty, scheduling next poll in: {:?} ms", event, timeout);
                     self.socket.timeout(timeout.as_millis() as u64, event)?;
-                },
-                NextEvent::ChannelNotFound => {
-                    panic!("channel for token {:?} is not registered in message queue", event)
                 },
             }
             return Ok(())
