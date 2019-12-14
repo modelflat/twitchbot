@@ -1,15 +1,18 @@
 language: rust
 rust:
   - nightly
+cache:
+  - cargo
 install:
   - cargo install grcov
 script:
+  - export PROJECT_NAME=modelflat_bot
   - export CARGO_INCREMENTAL=0
   - export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Zno-landing-pads"
   - cargo build
   - cargo test --all
   - |
-    zip -0 ccov.zip `find . \( -name "modelflat_bot*.gc*" \) -print`;
+    zip -0 ccov.zip `find . \( -name "${PROJECT_NAME}*.gc*" \) -print`;
     grcov ccov.zip \
       --source-dir . \
       --output-type coveralls+ \
@@ -20,8 +23,6 @@ script:
       --token $CODECOV_TOKEN \
       --commit-sha "$(git rev-parse HEAD)";
     bash <(curl -s https://codecov.io/bash) -f codecov.json;
-  # do bench last
-  - cargo bench --all
 branches:
   only:
     - master
