@@ -1,3 +1,5 @@
+use async_std::sync::RwLock;
+
 use async_tungstenite::connect_async;
 use futures::channel::mpsc::channel;
 use futures::{SinkExt, StreamExt};
@@ -5,14 +7,17 @@ use url::Url;
 
 pub mod model;
 
-pub mod commands;
+pub mod executor;
 pub mod messaging;
+
+pub mod bot;
 
 mod cooldown;
 mod history;
 
 use messaging::MessagingState;
 use model::*;
+use crate::core::bot::{BotState, CommandRegistry};
 
 async fn initialize(
     url: Url,
@@ -49,7 +54,9 @@ async fn initialize(
     ws_stream
 }
 
-pub fn run(url: Url, username: String, password: String, channels: Vec<String>) {
+pub fn run(
+    url: Url, username: String, password: String, channels: Vec<String>,
+) {
     let runtime = tokio::runtime::Builder::new()
         .build()
         .expect("Failed to create runtime");
@@ -65,9 +72,6 @@ pub fn run(url: Url, username: String, password: String, channels: Vec<String>) 
 
     let concurrency = 64;
 
-    // Command handling loop
-    runtime.spawn(commands::event_loop(rx_command, tx_message, concurrency));
-
     let messaging_state = Arc::new(MessagingState::new(
         &channels,
         Duration::from_secs(1),
@@ -82,8 +86,16 @@ pub fn run(url: Url, username: String, password: String, channels: Vec<String>) 
         concurrency,
     ));
 
+    let bot_state = Arc::new(RwLock::new(BotState::new(username, channels)));
+    let command_registry = Arc::new(CommandRegistry {});
+
+    // Command handling loop
+    runtime.spawn(executor::event_loop(
+        rx_command, tx_message, concurrency, command_registry.clone(), bot_state.clone()
+    ));
+
     // Main loop
     runtime.block_on(messaging::receiver_event_loop(
-        rx_socket, tx_socket, tx_command,
+        rx_socket, tx_socket, tx_command, command_registry
     ));
 }

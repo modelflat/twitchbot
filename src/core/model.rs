@@ -10,29 +10,23 @@ pub use futures::lock::Mutex;
 pub use futures::stream::{SplitSink, SplitStream};
 pub use tungstenite::Message;
 
+use crate::core::bot::CommandInstance;
+
 pub type WebSocketStreamSink = async_tungstenite::WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 pub type WebSocketStream = SplitStream<WebSocketStreamSink>;
 
 pub type WebSocketSharedSink = Arc<Mutex<SplitSink<WebSocketStreamSink, Message>>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PreparedMessage {
     pub channel: String,
     pub message: String,
 }
 
 #[derive(Debug)]
-pub struct Command {
-    pub user: String,
-    pub user_id: String,
-    pub channel: String,
-    pub message: String,
-}
-
-#[derive(Debug)]
 pub enum Action {
-    ExecuteCommand(Command),
+    ExecuteCommand(CommandInstance),
     SendMessage(String),
     None,
 }

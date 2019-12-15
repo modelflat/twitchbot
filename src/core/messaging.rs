@@ -10,6 +10,8 @@ use super::cooldown::{CooldownState, CooldownTracker};
 use super::history::History;
 use super::model::*;
 
+use super::bot::{CommandRegistry, CommandInstance};
+
 pub struct MessagingState {
     pub cooldowns: CooldownTracker,
     pub history: History<String>,
@@ -36,34 +38,16 @@ impl MessagingState {
     }
 }
 
-fn is_command(msg: &str) -> bool {
-    msg.starts_with(">>")
-}
-
-fn match_irc_command<'a>(message: &irc::Message<'a>) -> Result<Action, Box<dyn std::error::Error>> {
-    let message_text = message.trailing.unwrap_or("");
+fn match_irc_command<'a>(
+    message: &irc::Message<'a>, registry: Arc<CommandRegistry>
+) -> Result<Action, Box<dyn std::error::Error>> {
     match message.command.name {
-        "PRIVMSG" if is_command(message_text) => Ok(Action::ExecuteCommand(Command {
-            user: message
-                .tag_value("display-name")
-                .ok_or("no display-name tag!")?
-                .to_string(),
-            user_id: message
-                .tag_value("user-id")
-                .ok_or("no user-id tag!")?
-                .to_string(),
-            channel: message
-                .command
-                .args
-                .first()
-                .ok_or("no argument to PRIVMSG")?
-                .trim_start_matches('#')
-                .to_string(),
-            message: message_text.to_string(),
-        })),
-        "PRIVMSG" => {
-            info!("{}", message);
-            Ok(Action::None)
+        "PRIVMSG" => match registry.convert_to_command(message) {
+            Some(command) => Ok(Action::ExecuteCommand(command)),
+            None => {
+                info!("{}", message);
+                Ok(Action::None)
+            }
         }
         "PING" => {
             info!("responding to PING...");
@@ -84,16 +68,18 @@ fn match_irc_command<'a>(message: &irc::Message<'a>) -> Result<Action, Box<dyn s
 pub(crate) async fn receiver_event_loop(
     rx_socket: WebSocketStream,
     tx_socket: WebSocketSharedSink,
-    tx_command: Sender<Command>,
+    tx_command: Sender<CommandInstance>,
+    command_registry: Arc<CommandRegistry>,
 ) {
     let mut rx_socket = rx_socket;
     let mut tx_command = tx_command;
+
     while let Some(message) = rx_socket.next().await {
         match message {
             Ok(Message::Text(message)) => {
                 for message in message.split_terminator("\r\n") {
                     match irc::Message::parse(message) {
-                        Ok(message) => match match_irc_command(&message) {
+                        Ok(message) => match match_irc_command(&message, command_registry.clone()) {
                             Ok(action) => match action {
                                 Action::ExecuteCommand(command) => tx_command
                                     .send(command)
