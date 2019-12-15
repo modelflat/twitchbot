@@ -5,10 +5,33 @@ use futures::channel::mpsc::{Sender, Receiver};
 use tungstenite::Message;
 
 use crate::irc;
-use crate::cooldown::CooldownState;
+use crate::util::modify_message;
 
 use super::model::*;
-use crate::util::modify_message;
+use super::history::History;
+use super::cooldown::{CooldownState, CooldownTracker};
+
+pub struct MessagingState {
+    pub cooldowns: CooldownTracker,
+    pub history: History<String>,
+}
+
+impl MessagingState {
+
+    pub fn new(channels: &Vec<String>, initial_cooldown: Duration, history_ttl: Duration)
+        -> MessagingState {
+        MessagingState {
+            cooldowns: CooldownTracker::new(
+                channels.iter().map(|c| (c.to_string(), initial_cooldown)).collect()
+            ),
+            history: History::new(
+                channels.iter().map(|c| c.to_string()).collect(), history_ttl
+            ),
+        }
+    }
+
+}
+
 
 fn is_command(msg: &str) -> bool {
     msg.starts_with(">>")

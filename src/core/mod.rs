@@ -8,9 +8,12 @@ pub mod model;
 pub mod commands;
 pub mod messaging;
 
+mod history;
+mod cooldown;
+
 use model::*;
-use crate::cooldown::CooldownTracker;
-use crate::history::History;
+
+use crate::core::messaging::MessagingState;
 
 async fn initialize(
     url: Url,
@@ -59,12 +62,9 @@ pub fn run(
         rx_command, tx_message, concurrency,
     ));
 
-    let messaging_state = Arc::new(MessagingState {
-        cooldowns: CooldownTracker::new(
-            channels.iter().map(|c| (c.to_string(), Duration::from_secs(1))).collect()
-        ),
-        history: History::new(channels.clone(), Duration::from_secs(30)),
-    });
+    let messaging_state = Arc::new(MessagingState::new(
+        &channels, Duration::from_secs(1), Duration::from_secs(30)
+    ));
 
     // Message sending loop
     runtime.spawn(messaging::sender_event_loop(
