@@ -16,14 +16,38 @@
 /// to be used for message modification.
 pub fn modify_message(message: &mut String, salt: usize) {
     const SUFFIX: [char; 31] = [
-        '\u{e0000}' /*   e0001*/, '\u{e0002}', '\u{e0003}',
-        '\u{e0004}', '\u{e0005}', '\u{e0006}', '\u{e0007}',
-        '\u{e0008}', '\u{e0009}', '\u{e000a}', '\u{e000b}',
-        '\u{e000c}', '\u{e000d}', '\u{e000e}', '\u{e000f}',
-        '\u{e0010}', '\u{e0011}', '\u{e0012}', '\u{e0013}',
-        '\u{e0014}', '\u{e0015}', '\u{e0016}', '\u{e0017}',
-        '\u{e0018}', '\u{e0019}', '\u{e001a}', '\u{e001b}',
-        '\u{e001c}', '\u{e001d}', '\u{e001e}', '\u{e001f}',
+        '\u{e0000}',
+        /*  e0001 */
+        '\u{e0002}',
+        '\u{e0003}',
+        '\u{e0004}',
+        '\u{e0005}',
+        '\u{e0006}',
+        '\u{e0007}',
+        '\u{e0008}',
+        '\u{e0009}',
+        '\u{e000a}',
+        '\u{e000b}',
+        '\u{e000c}',
+        '\u{e000d}',
+        '\u{e000e}',
+        '\u{e000f}',
+        '\u{e0010}',
+        '\u{e0011}',
+        '\u{e0012}',
+        '\u{e0013}',
+        '\u{e0014}',
+        '\u{e0015}',
+        '\u{e0016}',
+        '\u{e0017}',
+        '\u{e0018}',
+        '\u{e0019}',
+        '\u{e001a}',
+        '\u{e001b}',
+        '\u{e001c}',
+        '\u{e001d}',
+        '\u{e001e}',
+        '\u{e001f}',
     ];
 
     message.push(SUFFIX[salt % SUFFIX.len()]);
@@ -59,5 +83,4 @@ mod tests {
         modify_message(&mut message, 123123123);
         assert!(message.len() <= original_len + 12);
     }
-
 }

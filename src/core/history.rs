@@ -1,8 +1,7 @@
 use std::collections::{HashMap, VecDeque};
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use async_std::sync::RwLock;
-
 
 pub struct HistoryEntry<Data> {
     timestamp: Instant,
@@ -19,14 +18,17 @@ pub struct History<Data> {
     ttl: Duration,
 }
 
-impl <Data> History<Data>
-where Data: Eq
+impl<Data> History<Data>
+where
+    Data: Eq,
 {
-
     pub fn new(channels: Vec<String>, ttl: Duration) -> History<Data> {
         History {
-            channels: channels.into_iter().map(|c| (c, RwLock::new(VecDeque::new()))).collect(),
-            ttl
+            channels: channels
+                .into_iter()
+                .map(|c| (c, RwLock::new(VecDeque::new())))
+                .collect(),
+            ttl,
         }
     }
 
@@ -34,7 +36,11 @@ where Data: Eq
     pub async fn push(&self, channel: &str, data: Data) {
         if let Some(lock) = self.channels.get(channel) {
             let mut queue = lock.write().await;
-            queue.push_back(HistoryEntry { timestamp: Instant::now(), data, times_found: 0 });
+            queue.push_back(HistoryEntry {
+                timestamp: Instant::now(),
+                data,
+                times_found: 0,
+            });
         }
     }
 
@@ -57,15 +63,15 @@ where Data: Eq
                 }
             }
 
-            return queue.iter_mut()
+            return queue
+                .iter_mut()
                 .find(|d| d.data == *data)
                 .map(|data| {
                     data.times_found += 1;
                     data.times_found
                 })
-                .or(Some(0))
+                .or(Some(0));
         }
         None
     }
-
 }

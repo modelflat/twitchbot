@@ -15,16 +15,24 @@ struct CooldownData {
 
 /// Simple cooldown tracker.
 pub struct CooldownTracker {
-    cooldown_map: HashMap<String, RwLock<CooldownData>>
+    cooldown_map: HashMap<String, RwLock<CooldownData>>,
 }
 
 impl CooldownTracker {
-
     pub fn new(init: HashMap<String, Duration>) -> CooldownTracker {
         CooldownTracker {
-            cooldown_map: init.into_iter()
-                .map(|(c, v)| (c, RwLock::new(CooldownData { value: v, last_accessed: Instant::now() - v })))
-                .collect()
+            cooldown_map: init
+                .into_iter()
+                .map(|(c, v)| {
+                    (
+                        c,
+                        RwLock::new(CooldownData {
+                            value: v,
+                            last_accessed: Instant::now() - v,
+                        }),
+                    )
+                })
+                .collect(),
         }
     }
 
@@ -38,9 +46,11 @@ impl CooldownTracker {
 
             if value.last_accessed + value.value < now {
                 value.last_accessed = now;
-                return Some(CooldownState::Ready)
+                return Some(CooldownState::Ready);
             } else {
-                return Some(CooldownState::NotReady(value.last_accessed + value.value - now))
+                return Some(CooldownState::NotReady(
+                    value.last_accessed + value.value - now,
+                ));
             }
         }
         None
@@ -52,6 +62,4 @@ impl CooldownTracker {
             value.value = new_value;
         }
     }
-
 }
-

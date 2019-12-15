@@ -12,6 +12,12 @@ fn main() {
     let channels = std::env::var("TWITCH_CHANNELS_TO_JOIN").expect("twitch channels to join");
 
     modelflat_bot::core::run(
-        url, username, password, channels.split_terminator(',').map(|s| s.to_string()).collect()
+        url,
+        username,
+        password,
+        channels
+            .split_terminator(',')
+            .map(|s| s.to_string())
+            .collect(),
     );
 }

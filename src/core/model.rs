@@ -1,15 +1,14 @@
 pub use log::*;
 
+pub use async_std::net::TcpStream;
+pub use std::collections::HashMap;
 pub use std::sync::Arc;
 pub use std::time::Duration;
-pub use std::collections::HashMap;
-pub use async_std::net::TcpStream;
 
-pub use futures::stream::{SplitStream, SplitSink};
-pub use futures::lock::Mutex;
-pub use tungstenite::Message;
 pub use async_tungstenite::MaybeTlsStream;
-
+pub use futures::lock::Mutex;
+pub use futures::stream::{SplitSink, SplitStream};
+pub use tungstenite::Message;
 
 pub type WebSocketStreamSink = async_tungstenite::WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -37,7 +36,6 @@ pub enum Action {
     SendMessage(String),
     None,
 }
-
 
 #[derive(Debug)]
 pub struct CoreState {

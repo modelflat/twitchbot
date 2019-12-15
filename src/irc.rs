@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
-use std::fmt::{Display, Formatter};
 use std::error::Error;
-
+use std::fmt::{Display, Formatter};
 
 type Tags<'a> = BTreeMap<&'a str, Option<&'a str>>;
 
@@ -9,37 +8,36 @@ type Tags<'a> = BTreeMap<&'a str, Option<&'a str>>;
 /// in RFC1459 (see `Message` description for more info)
 #[derive(Debug)]
 pub enum Prefix<'a> {
-    Full { nick: &'a str, user: &'a str, host: &'a str },
-    UserHost { user: &'a str, host: &'a str },
-    Host (&'a str),
-    None
+    Full {
+        nick: &'a str,
+        user: &'a str,
+        host: &'a str,
+    },
+    UserHost {
+        user: &'a str,
+        host: &'a str,
+    },
+    Host(&'a str),
+    None,
 }
 
-impl Default for Prefix <'_> {
-
+impl Default for Prefix<'_> {
     fn default() -> Self {
         Prefix::None
     }
-
 }
 
-impl Display for Prefix <'_> {
-
+impl Display for Prefix<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            Prefix::Full { nick, user, host } => f.write_fmt(format_args!(
-                ":{}!{}@{}", nick, user, host
-            )),
-            Prefix::UserHost { user, host } => f.write_fmt(format_args!(
-                ":{}@{}", user, host
-            )),
-            Prefix::Host (host) => f.write_fmt(format_args!(
-                ":{}", host
-            )),
-            Prefix::None => Ok(())
+            Prefix::Full { nick, user, host } => {
+                f.write_fmt(format_args!(":{}!{}@{}", nick, user, host))
+            }
+            Prefix::UserHost { user, host } => f.write_fmt(format_args!(":{}@{}", user, host)),
+            Prefix::Host(host) => f.write_fmt(format_args!(":{}", host)),
+            Prefix::None => Ok(()),
         }
     }
-
 }
 
 /// Command part of an IRC message. Includes command itself and all the arguments,
@@ -51,28 +49,23 @@ pub struct Command<'a> {
     pub args: Vec<&'a str>,
 }
 
-impl Default for Command <'_> {
-
+impl Default for Command<'_> {
     fn default() -> Self {
         Command {
-            name: "", args: Vec::default()
+            name: "",
+            args: Vec::default(),
         }
     }
-
 }
 
-impl Display for Command <'_> {
-
+impl Display for Command<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         if self.args.is_empty() {
             f.write_str(self.name)
         } else {
-            f.write_fmt(format_args!(
-                "{} {}", self.name, self.args.join(" ")
-            ))
+            f.write_fmt(format_args!("{} {}", self.name, self.args.join(" ")))
         }
     }
-
 }
 
 /// Structure representing a message in IRC chat.
@@ -90,11 +83,9 @@ pub struct Message<'a> {
     pub trailing: Option<&'a str>,
 }
 
-impl Message <'_> {
-
+impl Message<'_> {
     /// Parses given string into Twitch IRC message, but does it faster than "pest".
     pub fn parse<'a>(raw: &'a str) -> Result<Message<'a>, Box<dyn Error>> {
-
         fn parse_tags(raw_tags: &str) -> Tags {
             // tags are conveniently separated by a semicolon
             let mut tags = Tags::new();
@@ -124,8 +115,8 @@ impl Message <'_> {
                         Some(nick) => Prefix::Full { nick, user, host },
                         None => Prefix::UserHost { user, host },
                     }
-                },
-                None => Prefix::Host(host)
+                }
+                None => Prefix::Host(host),
             }
         }
 
@@ -156,12 +147,13 @@ impl Message <'_> {
                 let (raw, trailing) = raw.split_at(idx);
                 message.trailing = Some(&trailing[2..]);
                 raw
-            },
+            }
             None => {
                 // no trailing part in message
                 raw
             }
-        }.split(' ');
+        }
+        .split(' ');
 
         message.command.name = command_and_params.next().ok_or("Command expected")?;
         message.command.args = command_and_params.filter(|x| !x.is_empty()).collect();
@@ -172,11 +164,9 @@ impl Message <'_> {
     pub fn tag_value(&self, key: &str) -> Option<&str> {
         *self.tags.get(key)?
     }
-
 }
 
-impl Default for Message <'_> {
-
+impl Default for Message<'_> {
     fn default() -> Self {
         Message {
             tags: Tags::default(),
@@ -185,11 +175,9 @@ impl Default for Message <'_> {
             trailing: None,
         }
     }
-
 }
 
-impl Display for Message <'_> {
-
+impl Display for Message<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         if !self.tags.is_empty() {
             f.write_str("@")?;
@@ -208,11 +196,11 @@ impl Display for Message <'_> {
         }
 
         match &self.prefix {
-            Prefix::None => {},
+            Prefix::None => {}
             prefix => {
                 prefix.fmt(f)?;
                 f.write_str(" ")?;
-            },
+            }
         }
 
         self.command.fmt(f)?;
@@ -223,22 +211,21 @@ impl Display for Message <'_> {
 
         Ok(())
     }
-
 }
-
 
 pub struct MessageBuilder<'a> {
-    message: Message<'a>
+    message: Message<'a>,
 }
 
-impl <'a> MessageBuilder <'a> {
-
+impl<'a> MessageBuilder<'a> {
     pub fn new(command_name: &'a str) -> MessageBuilder {
-        MessageBuilder { message: {
-            let mut msg = Message::default();
-            msg.command.name = command_name;
-            msg
-        } }
+        MessageBuilder {
+            message: {
+                let mut msg = Message::default();
+                msg.command.name = command_name;
+                msg
+            },
+        }
     }
 
     pub fn with_arg(&'a mut self, arg: &'a str) -> &'a mut MessageBuilder {
@@ -264,9 +251,7 @@ impl <'a> MessageBuilder <'a> {
     pub fn string(&mut self) -> String {
         format!("{}", self.message)
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -287,10 +272,10 @@ mod tests {
     fn test_msg_parse_with_host_prefix() {
         let parsed = Message::parse(":host.com CAP LS").expect("Failed to parse message");
         match parsed.prefix {
-            Prefix::Host (host) => {
+            Prefix::Host(host) => {
                 assert_eq!(host, "host.com");
-            },
-            _ => assert!(false)
+            }
+            _ => assert!(false),
         };
     }
 
@@ -302,31 +287,61 @@ mod tests {
                 assert_eq!(nick, "nick");
                 assert_eq!(user, "user");
                 assert_eq!(host, "host.com");
-            },
-            _ => assert!(false)
+            }
+            _ => assert!(false),
         };
     }
 
     #[test]
     fn test_msg_parse_single_tag() {
-        let parsed = Message::parse("@aaa=a_value :host.com CAP LS").expect("Failed to parse message");
+        let parsed =
+            Message::parse("@aaa=a_value :host.com CAP LS").expect("Failed to parse message");
         assert!(!parsed.tags.is_empty());
-        assert_eq!(parsed.tags.get("aaa").expect("Expected key is not present").unwrap(), "a_value");
+        assert_eq!(
+            parsed
+                .tags
+                .get("aaa")
+                .expect("Expected key is not present")
+                .unwrap(),
+            "a_value"
+        );
     }
 
     #[test]
     fn test_msg_parse_multiple_tags() {
-        let parsed = Message::parse("@a=a_value;b;c=c_value :host.com CAP LS").expect("Failed to parse message");
+        let parsed = Message::parse("@a=a_value;b;c=c_value :host.com CAP LS")
+            .expect("Failed to parse message");
         assert!(!parsed.tags.is_empty());
-        assert_eq!(parsed.tags.get("a").expect("Expected key is not present").unwrap(), "a_value");
-        assert!(parsed.tags.get("b").expect("Expected key is not present").is_none());
-        assert_eq!(parsed.tags.get("c").expect("Expected key is not present").unwrap(), "c_value");
+        assert_eq!(
+            parsed
+                .tags
+                .get("a")
+                .expect("Expected key is not present")
+                .unwrap(),
+            "a_value"
+        );
+        assert!(parsed
+            .tags
+            .get("b")
+            .expect("Expected key is not present")
+            .is_none());
+        assert_eq!(
+            parsed
+                .tags
+                .get("c")
+                .expect("Expected key is not present")
+                .unwrap(),
+            "c_value"
+        );
     }
 
     #[test]
     fn test_msg_parse_trailing() {
         let parsed = Message::parse(":host.com CAP LS :trailing").expect("Failed to parse message");
-        assert_eq!(parsed.trailing.expect("Trailing should not be None"), "trailing");
+        assert_eq!(
+            parsed.trailing.expect("Trailing should not be None"),
+            "trailing"
+        );
     }
 
     #[test]
@@ -352,10 +367,22 @@ mod tests {
             .with_tag("ck", None)
             .string();
 
-        let tags = Message::parse(&message).expect("message is unparseable").tags;
+        let tags = Message::parse(&message)
+            .expect("message is unparseable")
+            .tags;
 
-        assert_eq!(tags.get("ak").expect("no key ak").expect("should have value"), "av");
-        assert_eq!(tags.get("bk").expect("no key bk").expect("should have value"), "bv");
+        assert_eq!(
+            tags.get("ak")
+                .expect("no key ak")
+                .expect("should have value"),
+            "av"
+        );
+        assert_eq!(
+            tags.get("bk")
+                .expect("no key bk")
+                .expect("should have value"),
+            "bv"
+        );
         assert!(tags.get("ck").expect("no key ck").is_none());
     }
 
@@ -366,7 +393,8 @@ mod tests {
 
     #[bench]
     fn bench_msg_parse_complex(b: &mut Bencher) {
-        let message = "@color=;user-id=123123123;badge-info=;emotes=;display-name=adasdasdasdaaaaa;\
+        let message =
+            "@color=;user-id=123123123;badge-info=;emotes=;display-name=adasdasdasdaaaaa;\
         room-id=123123123;subscriber=0;turbo=0;badges=;flags=;user-type=;wow-such-a-tag;+asdasdada;\
         room-id=123123123;subscriber=0;turbo=0;badges=;flags=;user-type=;wow-such-a-tag;+asdasdada;\
         id=XXXXXXXX-XXXX-XXXX-XXXX-23123123;mod=0;tmi-sent-ts=219319231;vendor.com/key=21931923123 \
@@ -378,5 +406,4 @@ mod tests {
 
         b.iter(|| Message::parse(message).expect("Failed to parse message"));
     }
-
 }
