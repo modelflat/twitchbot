@@ -329,6 +329,36 @@ mod tests {
         assert_eq!(parsed.trailing.expect("Trailing should not be None"), "trailing");
     }
 
+    #[test]
+    fn test_msg_build_simple() {
+        let message = MessageBuilder::new("CAP")
+            .with_arg("arg1")
+            .with_arg("arg2")
+            .with_trailing("message")
+            .with_prefix(Prefix::Host("tmi.twitch.tv"))
+            .with_tag("color", Some("blue"))
+            .string();
+
+        assert_eq!(message, "@color=blue :tmi.twitch.tv CAP arg1 arg2 :message");
+    }
+
+    #[test]
+    fn test_msg_build_tags_are_properly_constructed() {
+        let message = MessageBuilder::new("CAP")
+            .with_trailing("message")
+            .with_prefix(Prefix::Host("tmi.twitch.tv"))
+            .with_tag("ak", Some("av"))
+            .with_tag("bk", Some("bv"))
+            .with_tag("ck", None)
+            .string();
+
+        let tags = Message::parse(&message).expect("message is unparseable").tags;
+
+        assert_eq!(tags.get("ak").expect("no key ak").expect("should have value"), "av");
+        assert_eq!(tags.get("bk").expect("no key bk").expect("should have value"), "bv");
+        assert!(tags.get("ck").expect("no key ck").is_none());
+    }
+
     #[bench]
     fn bench_msg_parse_simple(b: &mut Bencher) {
         b.iter(|| Message::parse("CAP LS").expect("Failed to parse message"));

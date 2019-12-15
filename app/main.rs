@@ -1,31 +1,17 @@
-use std::env;
-
-use ws::connect;
-use modelflat_bot::core::Bot;
-
-
-const TWITCH_IRC_WS: &str = "wss://irc-ws.chat.twitch.tv:443";
-
-
-fn run(username: &str, password: &str, channels: Vec<String>) -> ws::Result<()> {
-    connect(TWITCH_IRC_WS, |out| {
-        Bot::new(out, username, password, channels.clone()).unwrap()
-    })
-}
-
+use url::Url;
 
 fn main() {
-    let username = env::var("TWITCH_USERNAME")
-        .expect("TWITCH_USERNAME should be set!");
+    env_logger::try_init().expect("Failed to initialize logger");
 
-    let password = env::var("TWITCH_OAUTH_TOKEN")
-        .expect("TWITCH_OAUTH_TOKEN should be set!");
+    let url = Url::parse("wss://irc-ws.chat.twitch.tv:443").unwrap();
 
-    let channels = env::var("TWITCH_CHANNELS_TO_JOIN")
-        .expect("TWITCH_CHANNELS_TO_JOIN should be set!")
-        .split(",")
-        .map(|x| x.to_lowercase())
-        .collect();
+    let username = std::env::var("TWITCH_USERNAME").expect("twitch username");
 
-    run(&username, &password, channels).unwrap();
+    let password = std::env::var("TWITCH_OAUTH_TOKEN").expect("twitch oauth token");
+
+    let channels = std::env::var("TWITCH_CHANNELS_TO_JOIN").expect("twitch channels to join");
+
+    modelflat_bot::core::run(
+        url, username, password, channels.split_terminator(',').map(|s| s.to_string()).collect()
+    );
 }
