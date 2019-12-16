@@ -12,6 +12,8 @@ pub mod messaging;
 
 pub mod bot;
 
+pub mod lua;
+
 mod cooldown;
 mod history;
 
