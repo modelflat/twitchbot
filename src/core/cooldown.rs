@@ -15,13 +15,22 @@ struct CooldownData {
 
 /// Simple cooldown tracker.
 pub struct CooldownTracker {
-    cooldown_map: HashMap<String, RwLock<CooldownData>>,
+    // TODO can we get rid of locks/optimize them?
+    // there are two locks in here: external and internal
+    // external is needed because we support adding/removing channels
+    // internal is needed because of the main functionality of CooldownTracker
+    //
+    // internal lock is locked ONLY through .write() (consider this when optimising)
+    //
+    // external lock can be locked for both writes and reads, but writes are expected to occur
+    // much more rarely than reads (therefore RwLock seems like a perfect fit for this task)
+    cooldown_map: RwLock<HashMap<String, RwLock<CooldownData>>>,
 }
 
 impl CooldownTracker {
     pub fn new(init: HashMap<String, Duration>) -> CooldownTracker {
         CooldownTracker {
-            cooldown_map: init
+            cooldown_map: RwLock::new(init
                 .into_iter()
                 .map(|(c, v)| {
                     (
@@ -32,15 +41,12 @@ impl CooldownTracker {
                         }),
                     )
                 })
-                .collect(),
+                .collect()),
         }
     }
 
     pub async fn access(&self, channel: &str) -> Option<CooldownState> {
-        if let Some(state) = self.cooldown_map.get(channel) {
-            // todo find out
-            // is it cheaper to first check if the channel is ready (.read()) and then lock
-            // using write(), or lock using write right away?
+        if let Some(state) = self.cooldown_map.read().await.get(channel) {
             let now = Instant::now();
             let mut value = state.write().await;
 
@@ -57,9 +63,25 @@ impl CooldownTracker {
     }
 
     pub async fn update(&self, channel: &str, new_value: Duration) {
-        if let Some(state) = self.cooldown_map.get(channel) {
+        if let Some(state) = self.cooldown_map.read().await.get(channel) {
             let mut value = state.write().await;
             value.value = new_value;
         }
     }
+
+    pub async fn add_channel(&self, channel: String, cooldown: Duration, reset_access: bool) -> bool {
+        self.cooldown_map.write().await.insert(channel, RwLock::new(CooldownData {
+            value: cooldown,
+            last_accessed: if reset_access { Instant::now() - cooldown } else { Instant::now() }
+        })).is_some()
+    }
+
+    pub async fn remove_channel(&self, channel: &str) {
+        let _ = self.cooldown_map.write().await.remove(channel);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 }
