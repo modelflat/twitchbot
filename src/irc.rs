@@ -175,7 +175,7 @@ impl Message<'_> {
             Some(s) => {
                 match s.find(' ') {
                     Some(n) => {
-                        let (l, r) = s.split_at(pos);
+                        let (l, r) = s.split_at(n);
                         (l, Some(r))
                     },
                     None => (s, None),

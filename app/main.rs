@@ -47,11 +47,17 @@ impl ExecutableCommand<MyState> for Echo {
         message: irc::Message<'a>,
         _: &ShareableBotState<MyState>,
     ) -> ExecutionOutcome {
-        message.trailing.unwrap_or("").splitn(2, ' ');
-        ExecutionOutcome::Success(PreparedMessage {
-            channel: message.first_arg_as_channel_name().unwrap().to_string(),
-            message: ,
-        })
+        let (_, rest) = message.arg_split();
+        match rest {
+            Some(s) => ExecutionOutcome::Success(PreparedMessage {
+                channel: message.first_arg_as_channel_name().unwrap().to_string(),
+                message: s.to_string(),
+            }),
+            None => {
+                info!("nothing to echo!");
+                ExecutionOutcome::SilentSuccess
+            },
+        }
     }
 }
 
@@ -66,9 +72,9 @@ impl ExecutableCommand<MyState> for Lua {
     ) -> ExecutionOutcome {
         use modelflat_bot::core::lua::run_untrusted_lua_code;
 
-        let mut args = message.trailing.unwrap_or("").splitn(2, ' ');
+        let (_, code) = message.arg_split();
 
-        if let Some(code) = args.nth(2) {
+        if let Some(code) = code {
             let user = message
                 .tag_value("display-name")
                 .unwrap_or("<no-display-name>");
