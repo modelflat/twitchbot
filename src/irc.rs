@@ -164,6 +164,26 @@ impl Message<'_> {
     pub fn tag_value(&self, key: &str) -> Option<&str> {
         *self.tags.get(key)?
     }
+
+    pub fn first_arg_as_channel_name(&self) -> Option<&str> {
+        self.command.args.first().map(|s| s.trim_start_matches('#'))
+    }
+
+    /// Splits the trailing into two parts - before the first space character and after.
+    pub fn arg_split(&self) -> (&str, Option<&str>) {
+        match self.trailing {
+            Some(s) => {
+                match s.find(' ') {
+                    Some(n) => {
+                        let (l, r) = s.split_at(pos);
+                        (l, Some(r))
+                    },
+                    None => (s, None),
+                }
+            },
+            None => ("", None)
+        }
+    }
 }
 
 impl Default for Message<'_> {

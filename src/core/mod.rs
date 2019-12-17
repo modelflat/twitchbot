@@ -17,9 +17,9 @@ pub mod lua;
 mod cooldown;
 mod history;
 
+use crate::core::bot::{BotState, CommandRegistry, ShareableExecutableCommand};
 use messaging::MessagingState;
 use model::*;
-use crate::core::bot::{BotState, CommandRegistry};
 
 async fn initialize(
     url: Url,
@@ -56,8 +56,13 @@ async fn initialize(
     ws_stream
 }
 
-pub fn run(
-    url: Url, username: String, password: String, channels: Vec<String>,
+pub fn run<T: 'static + std::marker::Send + std::marker::Sync>(
+    url: Url,
+    username: String,
+    password: String,
+    channels: Vec<String>,
+    data: T,
+    commands: HashMap<String, ShareableExecutableCommand<T>>,
 ) {
     let runtime = tokio::runtime::Builder::new()
         .build()
@@ -88,16 +93,23 @@ pub fn run(
         concurrency,
     ));
 
-    let bot_state = Arc::new(RwLock::new(BotState::new(username, channels)));
-    let command_registry = Arc::new(CommandRegistry {});
+    let bot_state = Arc::new(RwLock::new(BotState::new(username, channels, data)));
+    let command_registry = Arc::new(CommandRegistry::new(commands));
 
     // Command handling loop
     runtime.spawn(executor::event_loop(
-        rx_command, tx_message, concurrency, command_registry.clone(), bot_state.clone()
+        rx_command,
+        tx_message,
+        concurrency,
+        command_registry.clone(),
+        bot_state.clone(),
     ));
 
     // Main loop
     runtime.block_on(messaging::receiver_event_loop(
-        rx_socket, tx_socket, tx_command, command_registry
+        rx_socket,
+        tx_socket,
+        tx_command,
+        command_registry,
     ));
 }

@@ -1,12 +1,27 @@
 use log::*;
 
-use std::collections::BTreeSet;
 use async_std::sync::RwLock;
+use async_trait::async_trait;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::irc;
 
 use super::model::PreparedMessage;
-use crate::core::bot::ExecutionOutcome::{Success, SilentSuccess, Error};
+
+// TODO make this generic
+const PREFIX: &str = ">>";
+
+#[async_trait]
+pub trait ExecutableCommand<T: 'static + std::marker::Send + std::marker::Sync> {
+    async fn execute<'a>(
+        &self,
+        message: irc::Message<'a>,
+        state: &ShareableBotState<T>,
+    ) -> ExecutionOutcome;
+}
+
+pub type ShareableExecutableCommand<T> =
+    Box<dyn ExecutableCommand<T> + 'static + std::marker::Send + std::marker::Sync>;
 
 #[derive(Debug, Clone)]
 pub struct CommandInstance {
@@ -16,6 +31,8 @@ pub struct CommandInstance {
     pub message: String,
 }
 
+pub type RawCommand = String;
+
 #[derive(Debug, Clone)]
 pub enum ExecutionOutcome {
     Success(PreparedMessage),
@@ -24,100 +41,62 @@ pub enum ExecutionOutcome {
 }
 
 #[derive(Debug)]
-pub struct BotState {
+pub struct BotState<T> {
     username: String,
     channels: BTreeSet<String>,
+    data: T,
 }
 
-impl BotState {
-
-    pub fn new(username: String, channels: Vec<String>) -> BotState {
+impl<T> BotState<T> {
+    pub fn new(username: String, channels: Vec<String>, data: T) -> BotState<T> {
         BotState {
             username,
             channels: channels.into_iter().map(|s| s.to_string()).collect(),
+            data,
         }
     }
-
 }
 
-pub struct CommandRegistry;
+pub type ShareableBotState<T> = RwLock<BotState<T>>;
 
-impl CommandRegistry {
-    pub fn convert_to_command<'a>(&self, msg: &irc::Message<'a>) -> Option<CommandInstance> {
-        const PREFIX: &str = ">>";
+pub struct CommandRegistry<T>
+where
+    T: 'static + std::marker::Send + std::marker::Sync,
+{
+    commands: HashMap<String, ShareableExecutableCommand<T>>,
+}
 
-        let message = msg.trailing.unwrap_or("");
-        if message.starts_with(PREFIX) {
-            Some(CommandInstance {
-                user: msg.tag_value("display-name")?.to_string(),
-                user_id: msg.tag_value("user-id")?.to_string(),
-                channel: msg.command.args.first()?.trim_start_matches('#').to_string(),
-                message: message[PREFIX.len()..].to_string(),
-            })
-        } else {
-            None
-        }
+impl<T: 'static + std::marker::Send + std::marker::Sync> CommandRegistry<T> {
+    pub fn new(commands: HashMap<String, ShareableExecutableCommand<T>>) -> CommandRegistry<T> {
+        CommandRegistry { commands }
     }
 
-    pub async fn execute(&self, command: CommandInstance, state: &RwLock<BotState>)
-        -> ExecutionOutcome {
-        let mut args = command.message.trim_start_matches(' ').splitn(2, ' ');
-        let command_name = args.next().expect("Failed to split by space");
+    pub fn is_command<'a>(&self, msg: &irc::Message<'a>) -> bool {
+        msg.trailing.unwrap_or("").starts_with(PREFIX)
+    }
 
-        // TODO this should be made dynamic. leaving as static for now though
-        match command_name {
-            "bot" => {
-                Success(PreparedMessage {
-                    channel: command.channel,
-                    message: "FeelsDankMan I'm a bot by @modelflat. \
-                    Prefix: '>>'. \
-                    Language: Rust (nightly). \
-                    See (help) for commands. \
-                    Source code at github: modelflat/twitchbot".to_string()
-                })
-            },
-            "help" => {
-                Success(PreparedMessage {
-                    channel: command.channel,
-                    message: "FeelsDankMan \
-                    I can do only the two safest things in the world: \
-                    (echo) echo your message back without checking the banphrase API and \
-                    (lua) execute untrusted lua code in a sandbox (640kb, ~1000 instructions max). \
-                    And all that with no timeouts or permissions! (for now)".to_string()
-                })
-            },
-            "echo" => {
-                Success(PreparedMessage {
-                    channel: command.channel, message: match args.next() {
-                        Some(message) => message.to_string(),
-                        None => "echo!".to_string(),
-                    }
-                })
-            },
-            "lua" => {
-                use super::lua::run_untrusted_lua_code;
-                if let Some(message) = args.next() {
-                    info!("executing Lua: {}", message);
+    pub async fn execute(&self, message: String, state: &ShareableBotState<T>) -> ExecutionOutcome {
+        let message = irc::Message::parse(&message).unwrap();
 
-                    let result = run_untrusted_lua_code(message.to_string());
+        let mut command_and_trailing = message
+            .trailing
+            .unwrap_or("")
+            .trim_start_matches(' ')
+            .splitn(2, ' ');
 
-                    Success(PreparedMessage {
-                        channel: command.channel,
-                        message: match result {
-                            Ok(result) => format!("@{}, result = {}", command.user, result),
-                            Err(err) => format!("@{}, error! {}", command.user, err),
-                        }
-                    })
-                } else {
-                    info!("lua: not enough arguments");
-                    SilentSuccess
-                }
+        let command_name = &command_and_trailing
+            .next()
+            .expect("Failed to split by space")[PREFIX.len()..];
+
+        match self.commands.get(command_name) {
+            Some(command) => {
+                info!("executing command: {}", command_name);
+                command.execute(message, state).await
             }
-            _ => {
-                info!("unknown command: {}", command_name);
-                SilentSuccess
+            None => {
+                info!("no such command: {}", command_name);
+                ExecutionOutcome::SilentSuccess
             }
         }
-
     }
 }

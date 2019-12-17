@@ -1,8 +1,9 @@
-use rlua::{HookTriggers, Error};
+use rlua::{Error, HookTriggers};
 
 /// Sandbox supplied user code on lua side
 fn sandbox(untrusted_code: &str) -> String {
-    format!(r#"
+    format!(
+        r#"
 local env = {{}}
 
 local function run(untrusted_code)
@@ -25,7 +26,9 @@ end
 return run([[
     {code}
 ]])
-"#, code = untrusted_code)
+"#,
+        code = untrusted_code
+    )
 }
 
 /// Runs lua code in a sandbox.
@@ -39,29 +42,26 @@ pub fn run_untrusted_lua_code(source_code: String) -> Result<String, String> {
     // 640 kilobytes ought to be enough for anyone
     vm.set_memory_limit(Some(640 * (1 << 10)));
 
-    vm.set_hook(HookTriggers {
-        every_nth_instruction: Some(1),
-        ..Default::default()
-    }, move |_lua, _debug| {
-        instructions -= 1;
-        if instructions < 0 {
-            Err(Error::RuntimeError("execution timeout!".to_string()))
-        } else {
-            Ok(())
-        }
-    });
+    vm.set_hook(
+        HookTriggers {
+            every_nth_instruction: Some(1),
+            ..Default::default()
+        },
+        move |_lua, _debug| {
+            instructions -= 1;
+            if instructions < 0 {
+                Err(Error::RuntimeError("execution timeout!".to_string()))
+            } else {
+                Ok(())
+            }
+        },
+    );
 
-    vm.context(|context| {
-        match context.load(&source_code).into_function() {
-            Ok(compiled) => {
-                match compiled.call::<_, String>(0) {
-                    Ok(result) =>
-                        Ok(format!("{:?}", result)),
-                    Err(err) =>
-                        Err(format!("R: {:?}", err)),
-                }
-            },
-            Err(err) => Err(format!("C: {:?}", err)),
-        }
+    vm.context(|context| match context.load(&source_code).into_function() {
+        Ok(compiled) => match compiled.call::<_, String>(0) {
+            Ok(result) => Ok(format!("{:?}", result)),
+            Err(err) => Err(format!("R: {:?}", err)),
+        },
+        Err(err) => Err(format!("C: {:?}", err)),
     })
 }

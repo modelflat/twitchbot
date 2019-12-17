@@ -30,18 +30,19 @@ pub struct CooldownTracker {
 impl CooldownTracker {
     pub fn new(init: HashMap<String, Duration>) -> CooldownTracker {
         CooldownTracker {
-            cooldown_map: RwLock::new(init
-                .into_iter()
-                .map(|(c, v)| {
-                    (
-                        c,
-                        RwLock::new(CooldownData {
-                            value: v,
-                            last_accessed: Instant::now() - v,
-                        }),
-                    )
-                })
-                .collect()),
+            cooldown_map: RwLock::new(
+                init.into_iter()
+                    .map(|(c, v)| {
+                        (
+                            c,
+                            RwLock::new(CooldownData {
+                                value: v,
+                                last_accessed: Instant::now() - v,
+                            }),
+                        )
+                    })
+                    .collect(),
+            ),
         }
     }
 
@@ -69,19 +70,30 @@ impl CooldownTracker {
         }
     }
 
-    pub async fn add_channel(&self, channel: String, cooldown: Duration, reset_access: bool) -> bool {
-        self.cooldown_map.write().await.insert(channel, RwLock::new(CooldownData {
-            value: cooldown,
-            last_accessed: if reset_access { Instant::now() - cooldown } else { Instant::now() }
-        })).is_some()
+    pub async fn add_channel(
+        &self,
+        channel: String,
+        cooldown: Duration,
+        reset_access: bool,
+    ) -> bool {
+        self.cooldown_map
+            .write()
+            .await
+            .insert(
+                channel,
+                RwLock::new(CooldownData {
+                    value: cooldown,
+                    last_accessed: if reset_access {
+                        Instant::now() - cooldown
+                    } else {
+                        Instant::now()
+                    },
+                }),
+            )
+            .is_some()
     }
 
     pub async fn remove_channel(&self, channel: &str) {
         let _ = self.cooldown_map.write().await.remove(channel);
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }

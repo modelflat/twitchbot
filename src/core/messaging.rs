@@ -10,7 +10,7 @@ use super::cooldown::{CooldownState, CooldownTracker};
 use super::history::History;
 use super::model::*;
 
-use super::bot::{CommandRegistry, CommandInstance};
+use super::bot::{CommandRegistry, RawCommand};
 
 pub struct MessagingState {
     pub cooldowns: CooldownTracker,
@@ -38,38 +38,12 @@ impl MessagingState {
     }
 }
 
-fn match_irc_command<'a>(
-    message: &irc::Message<'a>, registry: Arc<CommandRegistry>
-) -> Result<Action, Box<dyn std::error::Error>> {
-    match message.command.name {
-        "PRIVMSG" => match registry.convert_to_command(message) {
-            Some(command) => Ok(Action::ExecuteCommand(command)),
-            None => {
-                info!("{}", message);
-                Ok(Action::None)
-            }
-        }
-        "PING" => {
-            info!("responding to PING...");
-            Ok(Action::SendMessage(
-                irc::MessageBuilder::new("PONG")
-                    .with_trailing(message.trailing.unwrap_or(""))
-                    .string(),
-            ))
-        }
-        cmd => {
-            info!("no handler for command {} / {}", cmd, message);
-            Ok(Action::None)
-        }
-    }
-}
-
 /// This function acts as event loop for reading messages from socket.
-pub(crate) async fn receiver_event_loop(
+pub(crate) async fn receiver_event_loop<T: 'static + std::marker::Send + std::marker::Sync>(
     rx_socket: WebSocketStream,
     tx_socket: WebSocketSharedSink,
-    tx_command: Sender<CommandInstance>,
-    command_registry: Arc<CommandRegistry>,
+    tx_command: Sender<RawCommand>,
+    command_registry: Arc<CommandRegistry<T>>,
 ) {
     let mut rx_socket = rx_socket;
     let mut tx_command = tx_command;
@@ -77,10 +51,33 @@ pub(crate) async fn receiver_event_loop(
     while let Some(message) = rx_socket.next().await {
         match message {
             Ok(Message::Text(message)) => {
-                for message in message.split_terminator("\r\n") {
-                    match irc::Message::parse(message) {
-                        Ok(message) => match match_irc_command(&message, command_registry.clone()) {
-                            Ok(action) => match action {
+                for raw_message in message.split_terminator("\r\n") {
+                    match irc::Message::parse(raw_message) {
+                        Ok(message) => {
+                            let action = match message.command.name {
+                                "PRIVMSG" => {
+                                    if command_registry.is_command(&message) {
+                                        Action::ExecuteCommand(raw_message.to_string())
+                                    } else {
+                                        info!("{}", message);
+                                        Action::None
+                                    }
+                                }
+                                "PING" => {
+                                    info!("responding to PING...");
+                                    Action::SendMessage(
+                                        irc::MessageBuilder::new("PONG")
+                                            .with_trailing(message.trailing.unwrap_or(""))
+                                            .string(),
+                                    )
+                                }
+                                cmd => {
+                                    info!("no handler for command {} / {}", cmd, message);
+                                    Action::None
+                                }
+                            };
+
+                            match action {
                                 Action::ExecuteCommand(command) => tx_command
                                     .send(command)
                                     .await
@@ -92,11 +89,8 @@ pub(crate) async fn receiver_event_loop(
                                     .await
                                     .expect("Failed to send message"),
                                 Action::None => trace!("No action taken"),
-                            },
-                            Err(err) => {
-                                error!("Error handling message: {} (message = {})", err, message)
                             }
-                        },
+                        }
                         Err(err) => {
                             error!("Error parsing message: {} (message = {})", err, message)
                         }
@@ -116,14 +110,14 @@ pub(crate) async fn sender_event_loop(
     state: Arc<MessagingState>,
     concurrency: usize,
 ) {
-    let tx_socket_factory = || tx_socket.clone();
-    let cooldown_factory = || state.clone();
+    let get_tx_socket = || tx_socket.clone();
+    let get_state = || state.clone();
 
     rx_message
         .for_each_concurrent(concurrency, async move |mut message| {
             // TODO revise this -- maybe bad in terms of performance
             // 1. consult cooldown tracker
-            match cooldown_factory().cooldowns.access(&message.channel).await {
+            match get_state().cooldowns.access(&message.channel).await {
                 Some(CooldownState::NotReady(how_long)) => tokio::timer::delay_for(how_long).await,
                 Some(CooldownState::Ready) => {} // ready to send
                 None => {
@@ -133,7 +127,7 @@ pub(crate) async fn sender_event_loop(
             }
             // 2. consult message history
             let mut should_add_to_history = false;
-            match cooldown_factory()
+            match get_state()
                 .history
                 .contains(&message.channel, &message.message)
                 .await
@@ -146,7 +140,7 @@ pub(crate) async fn sender_event_loop(
                 }
             }
             if should_add_to_history {
-                cooldown_factory()
+                get_state()
                     .history
                     .push(&message.channel, message.message.clone())
                     .await;
@@ -160,7 +154,7 @@ pub(crate) async fn sender_event_loop(
 
             // 4. send message
             info!("Sending message: {:?}", text);
-            tx_socket_factory()
+            get_tx_socket()
                 .lock()
                 .await
                 .send(Message::text(text))
