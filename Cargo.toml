@@ -21,6 +21,7 @@ futures = "*"
 futures-locks = "*"
 async-trait = "*"
 rlua = "*"
+chashmap = "*"
 
 [dependencies.reqwest]
 version = "0.10.0-alpha.2"

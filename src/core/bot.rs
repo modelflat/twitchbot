@@ -7,17 +7,28 @@ use std::collections::{BTreeSet, HashMap};
 use crate::irc;
 
 use super::model::PreparedMessage;
+use std::time::Duration;
+use crate::core::permissions::{PermissionLevel, PermissionList};
 
 // TODO make this generic
 const PREFIX: &str = ">>";
+
 
 #[async_trait]
 pub trait ExecutableCommand<T: 'static + std::marker::Send + std::marker::Sync> {
     async fn execute<'a>(
         &self,
+        command: &'a str,
         message: irc::Message<'a>,
         state: &ShareableBotState<T>,
+        read_only_state: &ReadonlyState<T>,
     ) -> ExecutionOutcome;
+
+    fn help(&self) -> String;
+
+    fn cooldown(&self) -> (Option<Duration>, Option<Duration>);
+
+    fn level(&self) -> PermissionLevel;
 }
 
 pub type ShareableExecutableCommand<T> =
@@ -40,15 +51,27 @@ pub enum ExecutionOutcome {
     Error(String),
 }
 
+impl ExecutionOutcome {
+
+    pub fn success(channel: String, message: String) -> ExecutionOutcome {
+        ExecutionOutcome::Success(PreparedMessage {
+            channel, message
+        })
+    }
+
+}
+
 #[derive(Debug)]
 pub struct BotState<T> {
-    username: String,
-    channels: BTreeSet<String>,
-    data: T,
+    pub username: String,
+    pub channels: BTreeSet<String>,
+    pub data: T,
 }
 
 impl<T> BotState<T> {
-    pub fn new(username: String, channels: Vec<String>, data: T) -> BotState<T> {
+    pub fn new(
+        username: String, channels: Vec<String>, data: T,
+    ) -> BotState<T> {
         BotState {
             username,
             channels: channels.into_iter().map(|s| s.to_string()).collect(),
@@ -63,7 +86,7 @@ pub struct CommandRegistry<T>
 where
     T: 'static + std::marker::Send + std::marker::Sync,
 {
-    commands: HashMap<String, ShareableExecutableCommand<T>>,
+    pub commands: HashMap<String, ShareableExecutableCommand<T>>,
 }
 
 impl<T: 'static + std::marker::Send + std::marker::Sync> CommandRegistry<T> {
@@ -75,28 +98,6 @@ impl<T: 'static + std::marker::Send + std::marker::Sync> CommandRegistry<T> {
         msg.trailing.unwrap_or("").starts_with(PREFIX)
     }
 
-    pub async fn execute(&self, message: String, state: &ShareableBotState<T>) -> ExecutionOutcome {
-        let message = irc::Message::parse(&message).unwrap();
-
-        let mut command_and_trailing = message
-            .trailing
-            .unwrap_or("")
-            .trim_start_matches(' ')
-            .splitn(2, ' ');
-
-        let command_name = &command_and_trailing
-            .next()
-            .expect("Failed to split by space")[PREFIX.len()..];
-
-        match self.commands.get(command_name) {
-            Some(command) => {
-                info!("executing command: {}", command_name);
-                command.execute(message, state).await
-            }
-            None => {
-                info!("no such command: {}", command_name);
-                ExecutionOutcome::SilentSuccess
-            }
-        }
-    }
 }
+
+pub type ReadonlyState<T> = CommandRegistry<T>;

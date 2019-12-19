@@ -14,12 +14,18 @@ pub mod bot;
 
 pub mod lua;
 
+pub mod permissions;
+
+pub mod prelude;
+
 mod cooldown;
 mod history;
 
 use crate::core::bot::{BotState, CommandRegistry, ShareableExecutableCommand};
 use messaging::MessagingState;
 use model::*;
+use crate::core::permissions::PermissionList;
+use crate::core::cooldown::{CooldownTracker, CooldownTrackerV2};
 
 async fn initialize(
     url: Url,
@@ -63,6 +69,7 @@ pub fn run<T: 'static + std::marker::Send + std::marker::Sync>(
     channels: Vec<String>,
     data: T,
     commands: HashMap<String, ShareableExecutableCommand<T>>,
+    permissions: PermissionList,
 ) {
     let runtime = tokio::runtime::Builder::new()
         .build()
@@ -86,30 +93,49 @@ pub fn run<T: 'static + std::marker::Send + std::marker::Sync>(
     ));
 
     // Message sending loop
-    runtime.spawn(messaging::sender_event_loop(
-        rx_message,
-        tx_socket.clone(),
-        messaging_state,
-        concurrency,
-    ));
+    runtime.spawn(
+        messaging::sender_event_loop(
+            rx_message,
+            tx_socket.clone(),
+            messaging_state,
+            concurrency,
+        )
+    );
 
     let bot_state = Arc::new(RwLock::new(BotState::new(username, channels, data)));
     let command_registry = Arc::new(CommandRegistry::new(commands));
+    let permission_list = Arc::new(permissions);
+
+    let command_cooldowns = Arc::new(CooldownTrackerV2::new({
+        command_registry.commands.iter().filter_map(|(name, cmd)| {
+            let (cd, _) = cmd.cooldown();
+            cd.map(|cd| (name.to_string(), cd))
+        }).collect()
+    }));
+
+    let user_cooldowns = Arc::new(CooldownTrackerV2::new(HashMap::new()));
 
     // Command handling loop
-    runtime.spawn(executor::event_loop(
-        rx_command,
-        tx_message,
-        concurrency,
-        command_registry.clone(),
-        bot_state.clone(),
-    ));
+    runtime.spawn(
+        executor::event_loop(
+            rx_command,
+            tx_message,
+            command_registry.clone(),
+            permission_list.clone(),
+            command_cooldowns.clone(),
+            user_cooldowns.clone(),
+            bot_state.clone(),
+            concurrency,
+        )
+    );
 
     // Main loop
-    runtime.block_on(messaging::receiver_event_loop(
-        rx_socket,
-        tx_socket,
-        tx_command,
-        command_registry,
-    ));
+    runtime.block_on(
+        messaging::receiver_event_loop(
+            rx_socket,
+            tx_socket,
+            tx_command,
+            command_registry,
+        )
+    );
 }
