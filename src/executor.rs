@@ -6,10 +6,10 @@ use futures::channel::mpsc::{Receiver, Sender};
 use futures::lock::Mutex;
 use futures::{SinkExt, StreamExt};
 
-use crate::core::bot::{CommandRegistry, ExecutionOutcome, RawCommand, ShareableBotState};
-use crate::core::cooldown::{CooldownState, CooldownTracker};
-use crate::core::model::PreparedMessage;
-use crate::core::permissions::PermissionList;
+use crate::bot::{CommandRegistry, ExecutionOutcome, RawCommand, ShareableBotState};
+use crate::cooldown::{CooldownState, CooldownTracker};
+use crate::model::PreparedMessage;
+use crate::permissions::PermissionList;
 use crate::irc;
 
 type GlobalCooldownTracker = CooldownTracker<String>;

@@ -1,4 +1,4 @@
-use modelflat_bot::core::prelude::*;
+use modelflat_bot::prelude::*;
 
 use super::MyState;
 

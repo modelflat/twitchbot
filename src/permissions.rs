@@ -1,4 +1,4 @@
-use crate::core::model::HashMap;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PermissionLevel {

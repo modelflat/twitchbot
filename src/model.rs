@@ -10,7 +10,7 @@ pub use futures::lock::Mutex;
 pub use futures::stream::{SplitSink, SplitStream};
 pub use tungstenite::Message;
 
-use crate::core::bot::RawCommand;
+use crate::bot::RawCommand;
 
 pub type WebSocketStreamSink = async_tungstenite::WebSocketStream<MaybeTlsStream<TcpStream>>;
 

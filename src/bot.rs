@@ -1,12 +1,12 @@
-use async_std::sync::RwLock;
-use async_trait::async_trait;
+use std::time::Duration;
 use std::collections::{BTreeSet, HashMap};
 
-use crate::irc;
+use async_std::sync::RwLock;
+use async_trait::async_trait;
 
-use super::model::PreparedMessage;
-use crate::core::permissions::PermissionLevel;
-use std::time::Duration;
+use crate::irc;
+use crate::model::PreparedMessage;
+use crate::permissions::PermissionLevel;
 
 // TODO make this generic
 const PREFIX: &str = ">>";

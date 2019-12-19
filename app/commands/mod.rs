@@ -1,6 +1,6 @@
-use modelflat_bot::core::bot::ShareableExecutableCommand;
-use modelflat_bot::core::model::HashMap;
-use modelflat_bot::core::permissions::{PermissionLevel, PermissionList};
+use std::collections::HashMap;
+
+use modelflat_bot::prelude::*;
 
 mod help;
 use help::Help;

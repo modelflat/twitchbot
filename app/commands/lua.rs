@@ -1,4 +1,5 @@
-use modelflat_bot::core::prelude::*;
+use modelflat_bot::prelude::*;
+use modelflat_bot::lua::run_untrusted_lua_code;
 
 use super::MyState;
 
@@ -13,8 +14,6 @@ impl ExecutableCommand<MyState> for Lua {
         _: &ShareableBotState<MyState>,
         _: &ReadonlyState<MyState>,
     ) -> ExecutionOutcome {
-        use modelflat_bot::core::lua::run_untrusted_lua_code;
-
         if !command.is_empty() {
             let user = message.tag_value("display-name").unwrap_or("<no-display-name>");
 

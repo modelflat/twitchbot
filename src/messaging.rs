@@ -3,14 +3,12 @@ use futures::{SinkExt, StreamExt};
 
 use tungstenite::Message;
 
+use crate::bot::{CommandRegistry, RawCommand};
+use crate::cooldown::{CooldownState, CooldownTracker};
+use crate::history::History;
 use crate::irc;
+use crate::model::*;
 use crate::util::modify_message;
-
-use super::cooldown::{CooldownState, CooldownTracker};
-use super::history::History;
-use super::model::*;
-
-use super::bot::{CommandRegistry, RawCommand};
 
 pub struct MessagingState {
     pub cooldowns: CooldownTracker<String>,

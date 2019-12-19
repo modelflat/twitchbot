@@ -14,7 +14,7 @@ fn main() {
 
     let channels = std::env::var("TWITCH_CHANNELS_TO_JOIN").expect("twitch channels to join");
 
-    modelflat_bot::core::run(
+    modelflat_bot::run(
         url,
         username,
         password,
