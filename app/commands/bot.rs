@@ -20,7 +20,8 @@ impl ExecutableCommand<MyState> for Bot {
             Prefix: '>>'. \
             Language: Rust (nightly). \
             See (>> help) for commands. \
-            Source code at github: modelflat/twitchbot".to_string(),
+            Source code at github: modelflat/twitchbot"
+                .to_string(),
         )
     }
 

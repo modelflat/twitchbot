@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
 use std::hash::Hash;
+use std::time::{Duration, Instant};
 
 use chashmap::WriteGuard;
 
@@ -15,14 +15,14 @@ pub struct CooldownData {
 }
 
 impl CooldownData {
-
     pub fn new(cooldown: Duration, reset: bool) -> CooldownData {
         CooldownData {
-            value: cooldown, last_accessed: if reset {
+            value: cooldown,
+            last_accessed: if reset {
                 Instant::now() - cooldown
             } else {
                 Instant::now()
-            }
+            },
         }
     }
 
@@ -52,29 +52,26 @@ impl CooldownData {
             CooldownState::NotReady(_) => true,
         }
     }
-
 }
 
 pub struct CooldownTracker<K>
-    where K: Hash + PartialEq
+where
+    K: Hash + PartialEq,
 {
     // TODO figure out:
     // do locks in this map affect asynchronous model of execution?
     cooldown_map: chashmap::CHashMap<K, CooldownData>,
 }
 
-impl <K> CooldownTracker<K>
-    where K: Hash + PartialEq
+impl<K> CooldownTracker<K>
+where
+    K: Hash + PartialEq,
 {
-
     pub fn new(init: HashMap<K, Duration>) -> CooldownTracker<K> {
         CooldownTracker {
             cooldown_map: init
                 .into_iter()
-                .map(|(channel, cooldown)| (
-                    channel,
-                    CooldownData::new(cooldown, true),
-                ))
+                .map(|(channel, cooldown)| (channel, CooldownData::new(cooldown, true)))
                 .collect(),
         }
     }
@@ -111,5 +108,4 @@ impl <K> CooldownTracker<K>
     pub fn add_channel(&self, channel: K, cooldown: Duration, reset: bool) {
         self.cooldown_map.insert(channel, CooldownData::new(cooldown, reset));
     }
-
 }

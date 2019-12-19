@@ -6,17 +6,15 @@ use futures::channel::mpsc::{Receiver, Sender};
 use futures::lock::Mutex;
 use futures::{SinkExt, StreamExt};
 
-use crate::irc;
 use crate::core::bot::{CommandRegistry, ExecutionOutcome, RawCommand, ShareableBotState};
+use crate::core::cooldown::{CooldownState, CooldownTracker};
 use crate::core::model::PreparedMessage;
 use crate::core::permissions::PermissionList;
-use crate::core::cooldown::{CooldownState, CooldownTracker};
-
+use crate::irc;
 
 type GlobalCooldownTracker = CooldownTracker<String>;
 
 type UserCooldownTracker = CooldownTracker<(String, String)>;
-
 
 async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
     raw_message: String,
@@ -33,7 +31,10 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
 
     let (command_name, command_body) = {
         let mut command_split = (&message.trailing.unwrap()[PREFIX.len()..]).splitn(2, ' ');
-        (command_split.next().unwrap().to_string(), command_split.next().unwrap_or(""))
+        (
+            command_split.next().unwrap().to_string(),
+            command_split.next().unwrap_or(""),
+        )
     };
 
     let user = message.tag_value("display-name").unwrap_or("");
@@ -57,36 +58,39 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
             }
 
             match (command_cooldown, user_cooldown) {
-                (None, Some(_)) => {
-                    match user_cooldowns.access(&command_user_pair) {
-                        Some(CooldownState::Ready) => {
-                            trace!("user cooldown is satisfied");
-                        },
-                        Some(CooldownState::NotReady(remaining)) => {
-                            info!("{} -> '{}' is on cooldown ({} s remaining)",
-                                  user, command_name, remaining.as_secs_f64());
-                            return;
-                        },
-                        None => {
-                            error!("'{}' is not found in cooldown tracker", command_name);
-                            return;
-                        }
+                (None, Some(_)) => match user_cooldowns.access(&command_user_pair) {
+                    Some(CooldownState::Ready) => {
+                        trace!("user cooldown is satisfied");
+                    }
+                    Some(CooldownState::NotReady(remaining)) => {
+                        info!(
+                            "{} -> '{}' is on cooldown ({} s remaining)",
+                            user,
+                            command_name,
+                            remaining.as_secs_f64()
+                        );
+                        return;
+                    }
+                    None => {
+                        error!("'{}' is not found in cooldown tracker", command_name);
+                        return;
                     }
                 },
-                (Some(_), None) => {
-                    match global_cooldowns.access(&command_name) {
-                        Some(CooldownState::Ready) => {
-                            trace!("command cooldown is satisfied");
-                        },
-                        Some(CooldownState::NotReady(remaining)) => {
-                            info!("'{}' is on cooldown ({} s remaining)",
-                                  command_name, remaining.as_secs_f64());
-                            return;
-                        },
-                        None => {
-                            error!("'{}' is not found in cooldown tracker", command_name);
-                            return;
-                        }
+                (Some(_), None) => match global_cooldowns.access(&command_name) {
+                    Some(CooldownState::Ready) => {
+                        trace!("command cooldown is satisfied");
+                    }
+                    Some(CooldownState::NotReady(remaining)) => {
+                        info!(
+                            "'{}' is on cooldown ({} s remaining)",
+                            command_name,
+                            remaining.as_secs_f64()
+                        );
+                        return;
+                    }
+                    None => {
+                        error!("'{}' is not found in cooldown tracker", command_name);
+                        return;
                     }
                 },
                 (Some(_), Some(_)) => {
@@ -96,21 +100,20 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
                             return;
                         } else {
                             match global_cooldowns.access(&command_name) {
-                                Some(CooldownState::Ready) => {
-                                    match user_write_lock.try_reset() {
-                                        CooldownState::Ready => {
-                                            trace!("user and command cooldowns are satisfied");
-                                        },
-                                        CooldownState::NotReady(_) => {
-                                            unreachable!("lock guarantees broken")
-                                        }
+                                Some(CooldownState::Ready) => match user_write_lock.try_reset() {
+                                    CooldownState::Ready => {
+                                        trace!("user and command cooldowns are satisfied");
                                     }
+                                    CooldownState::NotReady(_) => unreachable!("lock guarantees broken"),
                                 },
                                 Some(CooldownState::NotReady(remaining)) => {
-                                    info!("'{}' is on cooldown ({} s remaining)",
-                                          command_name, remaining.as_secs_f64());
+                                    info!(
+                                        "'{}' is on cooldown ({} s remaining)",
+                                        command_name,
+                                        remaining.as_secs_f64()
+                                    );
                                     return;
-                                },
+                                }
                                 None => {
                                     error!("'{}' is not found in cooldown tracker", command_name);
                                     return;
@@ -121,7 +124,7 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
                         error!("user '{}' was suddenly removed from cooldown tracker", user);
                         return;
                     }
-                },
+                }
                 (None, None) => {
                     // TODO check this at setup time
                     error!("command '{}' has no cooldowns, skipping...", command_name);
@@ -131,7 +134,7 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
 
             info!("executing command: {}", command_name);
             executable.execute(command_body, message, &state, commands).await
-        },
+        }
         None => {
             info!("no such command: {}", command_name);
             ExecutionOutcome::SilentSuccess
@@ -146,14 +149,12 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
                 .send(message)
                 .await
                 .expect("Failed to submit message to message queue");
-        },
+        }
         ExecutionOutcome::SilentSuccess => {
             info!("Successfully executed command: {:?}", raw_message);
-        },
+        }
         ExecutionOutcome::Error(error) => {
-            error!(
-                "Error executing command: {:?} / command = {:?}", error, raw_message
-            );
+            error!("Error executing command: {:?} / command = {:?}", error, raw_message);
         }
     };
 }
@@ -177,15 +178,18 @@ pub(crate) async fn event_loop<T: 'static + std::marker::Send + std::marker::Syn
     let get_user_cooldowns = || user_cooldowns.clone();
     let get_state = || state.clone();
 
-    rx_command.for_each_concurrent(concurrency, async move |raw_message| {
-        execute(
-            raw_message,
-            &*get_tx_message(),
-            &*get_commands(),
-            &*get_permissions(),
-            &*get_global_cooldowns(),
-            &*get_user_cooldowns(),
-            &*get_state(),
-        ).await;
-    }).await;
+    rx_command
+        .for_each_concurrent(concurrency, async move |raw_message| {
+            execute(
+                raw_message,
+                &*get_tx_message(),
+                &*get_commands(),
+                &*get_permissions(),
+                &*get_global_cooldowns(),
+                &*get_user_cooldowns(),
+                &*get_state(),
+            )
+            .await;
+        })
+        .await;
 }

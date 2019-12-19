@@ -18,22 +18,10 @@ pub struct MessagingState {
 }
 
 impl MessagingState {
-    pub fn new(
-        channels: &Vec<String>,
-        initial_cooldown: Duration,
-        history_ttl: Duration,
-    ) -> MessagingState {
+    pub fn new(channels: &Vec<String>, initial_cooldown: Duration, history_ttl: Duration) -> MessagingState {
         MessagingState {
-            cooldowns: CooldownTracker::new(
-                channels
-                    .iter()
-                    .map(|c| (c.to_string(), initial_cooldown))
-                    .collect(),
-            ),
-            history: History::new(
-                channels.iter().map(|c| c.to_string()).collect(),
-                history_ttl,
-            ),
+            cooldowns: CooldownTracker::new(channels.iter().map(|c| (c.to_string(), initial_cooldown)).collect()),
+            history: History::new(channels.iter().map(|c| c.to_string()).collect(), history_ttl),
         }
     }
 }
@@ -78,10 +66,9 @@ pub(crate) async fn receiver_event_loop<T: 'static + std::marker::Send + std::ma
                             };
 
                             match action {
-                                Action::ExecuteCommand(command) => tx_command
-                                    .send(command)
-                                    .await
-                                    .expect("Failed to submit command"),
+                                Action::ExecuteCommand(command) => {
+                                    tx_command.send(command).await.expect("Failed to submit command")
+                                }
                                 Action::SendMessage(message) => tx_socket
                                     .lock()
                                     .await
@@ -91,9 +78,7 @@ pub(crate) async fn receiver_event_loop<T: 'static + std::marker::Send + std::ma
                                 Action::None => trace!("No action taken"),
                             }
                         }
-                        Err(err) => {
-                            error!("Error parsing message: {} (message = {})", err, message)
-                        }
+                        Err(err) => error!("Error parsing message: {} (message = {})", err, message),
                     }
                 }
             }
@@ -127,11 +112,7 @@ pub(crate) async fn sender_event_loop(
             }
             // 2. consult message history
             let mut should_add_to_history = false;
-            match get_state()
-                .history
-                .contains(&message.channel, &message.message)
-                .await
-            {
+            match get_state().history.contains(&message.channel, &message.message).await {
                 Some(0) => should_add_to_history = true,
                 Some(n) => modify_message(&mut message.message, n - 1),
                 None => {

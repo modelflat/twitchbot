@@ -16,9 +16,7 @@ impl ExecutableCommand<MyState> for Lua {
         use modelflat_bot::core::lua::run_untrusted_lua_code;
 
         if !command.is_empty() {
-            let user = message
-                .tag_value("display-name")
-                .unwrap_or("<no-display-name>");
+            let user = message.tag_value("display-name").unwrap_or("<no-display-name>");
 
             info!("{} is executing Lua: {}", user, command);
 
@@ -39,7 +37,8 @@ impl ExecutableCommand<MyState> for Lua {
 
     fn help(&self) -> String {
         "lua <code> -- executes your code in a Lua sandbox. \
-        limits: 640kb of memory, 1000 instructions FeelsGoodMan".to_string()
+        limits: 640kb of memory, 1000 instructions FeelsGoodMan"
+            .to_string()
     }
 
     fn cooldown(&self) -> (Option<Duration>, Option<Duration>) {

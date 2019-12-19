@@ -30,9 +30,7 @@ impl Default for Prefix<'_> {
 impl Display for Prefix<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            Prefix::Full { nick, user, host } => {
-                f.write_fmt(format_args!(":{}!{}@{}", nick, user, host))
-            }
+            Prefix::Full { nick, user, host } => f.write_fmt(format_args!(":{}!{}@{}", nick, user, host)),
             Prefix::UserHost { user, host } => f.write_fmt(format_args!(":{}@{}", user, host)),
             Prefix::Host(host) => f.write_fmt(format_args!(":{}", host)),
             Prefix::None => Ok(()),
@@ -172,16 +170,14 @@ impl Message<'_> {
     /// Splits the trailing into two parts - before the first space character and after.
     pub fn arg_split(&self) -> (&str, Option<&str>) {
         match self.trailing {
-            Some(s) => {
-                match s.find(' ') {
-                    Some(n) => {
-                        let (l, r) = s.split_at(n);
-                        (l, Some(r))
-                    },
-                    None => (s, None),
+            Some(s) => match s.find(' ') {
+                Some(n) => {
+                    let (l, r) = s.split_at(n);
+                    (l, Some(r))
                 }
+                None => (s, None),
             },
-            None => ("", None)
+            None => ("", None),
         }
     }
 }
@@ -314,43 +310,25 @@ mod tests {
 
     #[test]
     fn test_msg_parse_single_tag() {
-        let parsed =
-            Message::parse("@aaa=a_value :host.com CAP LS").expect("Failed to parse message");
+        let parsed = Message::parse("@aaa=a_value :host.com CAP LS").expect("Failed to parse message");
         assert!(!parsed.tags.is_empty());
         assert_eq!(
-            parsed
-                .tags
-                .get("aaa")
-                .expect("Expected key is not present")
-                .unwrap(),
+            parsed.tags.get("aaa").expect("Expected key is not present").unwrap(),
             "a_value"
         );
     }
 
     #[test]
     fn test_msg_parse_multiple_tags() {
-        let parsed = Message::parse("@a=a_value;b;c=c_value :host.com CAP LS")
-            .expect("Failed to parse message");
+        let parsed = Message::parse("@a=a_value;b;c=c_value :host.com CAP LS").expect("Failed to parse message");
         assert!(!parsed.tags.is_empty());
         assert_eq!(
-            parsed
-                .tags
-                .get("a")
-                .expect("Expected key is not present")
-                .unwrap(),
+            parsed.tags.get("a").expect("Expected key is not present").unwrap(),
             "a_value"
         );
-        assert!(parsed
-            .tags
-            .get("b")
-            .expect("Expected key is not present")
-            .is_none());
+        assert!(parsed.tags.get("b").expect("Expected key is not present").is_none());
         assert_eq!(
-            parsed
-                .tags
-                .get("c")
-                .expect("Expected key is not present")
-                .unwrap(),
+            parsed.tags.get("c").expect("Expected key is not present").unwrap(),
             "c_value"
         );
     }
@@ -358,10 +336,7 @@ mod tests {
     #[test]
     fn test_msg_parse_trailing() {
         let parsed = Message::parse(":host.com CAP LS :trailing").expect("Failed to parse message");
-        assert_eq!(
-            parsed.trailing.expect("Trailing should not be None"),
-            "trailing"
-        );
+        assert_eq!(parsed.trailing.expect("Trailing should not be None"), "trailing");
     }
 
     #[test]
@@ -387,22 +362,10 @@ mod tests {
             .with_tag("ck", None)
             .string();
 
-        let tags = Message::parse(&message)
-            .expect("message is unparseable")
-            .tags;
+        let tags = Message::parse(&message).expect("message is unparseable").tags;
 
-        assert_eq!(
-            tags.get("ak")
-                .expect("no key ak")
-                .expect("should have value"),
-            "av"
-        );
-        assert_eq!(
-            tags.get("bk")
-                .expect("no key bk")
-                .expect("should have value"),
-            "bv"
-        );
+        assert_eq!(tags.get("ak").expect("no key ak").expect("should have value"), "av");
+        assert_eq!(tags.get("bk").expect("no key bk").expect("should have value"), "bv");
         assert!(tags.get("ck").expect("no key ck").is_none());
     }
 
@@ -413,8 +376,7 @@ mod tests {
 
     #[bench]
     fn bench_msg_parse_complex(b: &mut Bencher) {
-        let message =
-            "@color=;user-id=123123123;badge-info=;emotes=;display-name=adasdasdasdaaaaa;\
+        let message = "@color=;user-id=123123123;badge-info=;emotes=;display-name=adasdasdasdaaaaa;\
         room-id=123123123;subscriber=0;turbo=0;badges=;flags=;user-type=;wow-such-a-tag;+asdasdada;\
         room-id=123123123;subscriber=0;turbo=0;badges=;flags=;user-type=;wow-such-a-tag;+asdasdada;\
         id=XXXXXXXX-XXXX-XXXX-XXXX-23123123;mod=0;tmi-sent-ts=219319231;vendor.com/key=21931923123 \

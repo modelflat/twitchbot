@@ -1,6 +1,6 @@
-use modelflat_bot::core::model::HashMap;
 use modelflat_bot::core::bot::ShareableExecutableCommand;
-use modelflat_bot::core::permissions::{PermissionList, PermissionLevel};
+use modelflat_bot::core::model::HashMap;
+use modelflat_bot::core::permissions::{PermissionLevel, PermissionList};
 
 mod help;
 use help::Help;
@@ -40,4 +40,3 @@ pub fn permissions() -> PermissionList {
     map.insert("modelflat".to_string(), PermissionLevel::Admin);
     PermissionList::new(map)
 }
-

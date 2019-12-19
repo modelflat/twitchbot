@@ -1,8 +1,7 @@
 use url::Url;
 
 mod commands;
-use commands::{state, commands, permissions};
-
+use commands::{commands, permissions, state};
 
 fn main() {
     env_logger::try_init().expect("Failed to initialize logger");
@@ -19,10 +18,7 @@ fn main() {
         url,
         username,
         password,
-        channels
-            .split_terminator(',')
-            .map(|s| s.to_string())
-            .collect(),
+        channels.split_terminator(',').map(|s| s.to_string()).collect(),
         state(),
         commands(),
         permissions(),

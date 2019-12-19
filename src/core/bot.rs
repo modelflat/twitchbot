@@ -5,12 +5,11 @@ use std::collections::{BTreeSet, HashMap};
 use crate::irc;
 
 use super::model::PreparedMessage;
-use std::time::Duration;
 use crate::core::permissions::PermissionLevel;
+use std::time::Duration;
 
 // TODO make this generic
 const PREFIX: &str = ">>";
-
 
 #[async_trait]
 pub trait ExecutableCommand<T: 'static + std::marker::Send + std::marker::Sync> {
@@ -50,13 +49,9 @@ pub enum ExecutionOutcome {
 }
 
 impl ExecutionOutcome {
-
     pub fn success(channel: String, message: String) -> ExecutionOutcome {
-        ExecutionOutcome::Success(PreparedMessage {
-            channel, message
-        })
+        ExecutionOutcome::Success(PreparedMessage { channel, message })
     }
-
 }
 
 #[derive(Debug)]
@@ -67,9 +62,7 @@ pub struct BotState<T> {
 }
 
 impl<T> BotState<T> {
-    pub fn new(
-        username: String, channels: Vec<String>, data: T,
-    ) -> BotState<T> {
+    pub fn new(username: String, channels: Vec<String>, data: T) -> BotState<T> {
         BotState {
             username,
             channels: channels.into_iter().map(|s| s.to_string()).collect(),
@@ -95,7 +88,6 @@ impl<T: 'static + std::marker::Send + std::marker::Sync> CommandRegistry<T> {
     pub fn is_command<'a>(&self, msg: &irc::Message<'a>) -> bool {
         msg.trailing.unwrap_or("").starts_with(PREFIX)
     }
-
 }
 
 pub type ReadonlyState<T> = CommandRegistry<T>;

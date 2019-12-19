@@ -17,8 +17,7 @@ impl ExecutableCommand<MyState> for Help {
             message.first_arg_as_channel_name().unwrap().to_string(),
             if command.is_empty() {
                 format!("commands: {}", {
-                    let mut cmds: Vec<String> = command_registry.commands.keys()
-                        .map(|k| k.to_owned()).collect();
+                    let mut cmds: Vec<String> = command_registry.commands.keys().map(|k| k.to_owned()).collect();
                     cmds.sort_unstable();
                     cmds.join(", ")
                 })
@@ -27,8 +26,8 @@ impl ExecutableCommand<MyState> for Help {
                     Some(command_name) => match command_registry.commands.get(command_name) {
                         Some(command) => format!("help: {}", command.help()),
                         None => format!("help: no such command: '{}'", command_name),
-                    }
-                    None => unreachable!()
+                    },
+                    None => unreachable!(),
                 }
             },
         )
