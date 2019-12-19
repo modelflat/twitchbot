@@ -13,7 +13,7 @@ use super::model::*;
 use super::bot::{CommandRegistry, RawCommand};
 
 pub struct MessagingState {
-    pub cooldowns: CooldownTracker,
+    pub cooldowns: CooldownTracker<String>,
     pub history: History<String>,
 }
 
@@ -117,7 +117,7 @@ pub(crate) async fn sender_event_loop(
         .for_each_concurrent(concurrency, async move |mut message| {
             // TODO revise this -- maybe bad in terms of performance
             // 1. consult cooldown tracker
-            match get_state().cooldowns.access(&message.channel).await {
+            match get_state().cooldowns.access(&message.channel) {
                 Some(CooldownState::NotReady(how_long)) => tokio::timer::delay_for(how_long).await,
                 Some(CooldownState::Ready) => {} // ready to send
                 None => {

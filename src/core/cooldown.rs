@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-
-use async_std::sync::RwLock;
 use std::hash::Hash;
+
 use chashmap::WriteGuard;
 
 pub enum CooldownState {
@@ -38,78 +37,25 @@ impl CooldownData {
         }
     }
 
-    #[inline]
-    pub fn cooldown(&self) -> bool {
-        self.last_accessed + self.value >= Instant::now()
-    }
-
-}
-
-/// Simple cooldown tracker.
-pub struct CooldownTracker {
-    // TODO can we get rid of locks/optimize them?
-    // there are two locks in here: external and internal
-    // external is needed because we support adding/removing channels
-    // internal is needed because of the main functionality of CooldownTracker
-    //
-    // internal lock is locked ONLY through .write() (consider this when optimising)
-    //
-    // external lock can be locked for both writes and reads, but writes are expected to occur
-    // much more rarely than reads (therefore RwLock seems like a perfect fit for this task)
-    cooldown_map: RwLock<HashMap<String, RwLock<CooldownData>>>,
-}
-
-impl CooldownTracker {
-    pub fn new(init: HashMap<String, Duration>) -> CooldownTracker {
-        CooldownTracker {
-            cooldown_map: RwLock::new(
-                init.into_iter()
-                    .map(|(channel, cooldown)| (
-                        channel,
-                        RwLock::new(CooldownData::new(cooldown, true)),
-                    ))
-                    .collect(),
-            ),
-        }
-    }
-
-    pub async fn access(&self, channel: &str) -> Option<CooldownState> {
-        if let Some(state) = self.cooldown_map.read().await.get(channel) {
-            Some(state.write().await.try_reset())
+    pub fn cooldown(&self) -> CooldownState {
+        let now = Instant::now();
+        if self.last_accessed + self.value >= now {
+            CooldownState::NotReady(self.last_accessed + self.value - now)
         } else {
-            None
+            CooldownState::Ready
         }
     }
 
-    pub async fn update(&self, channel: &str, new_value: Duration) {
-        if let Some(state) = self.cooldown_map.read().await.get(channel) {
-            let mut value = state.write().await;
-            value.value = new_value;
+    pub fn is_cooldown(&self) -> bool {
+        match self.cooldown() {
+            CooldownState::Ready => false,
+            CooldownState::NotReady(_) => true,
         }
     }
 
-    pub async fn add_channel(
-        &self,
-        channel: String,
-        cooldown: Duration,
-        reset: bool,
-    ) -> bool {
-        self.cooldown_map
-            .write()
-            .await
-            .insert(
-                channel,
-                RwLock::new(CooldownData::new(cooldown, reset)),
-            )
-            .is_some()
-    }
-
-    pub async fn remove_channel(&self, channel: &str) {
-        let _ = self.cooldown_map.write().await.remove(channel);
-    }
 }
 
-pub struct CooldownTrackerV2<K>
+pub struct CooldownTracker<K>
     where K: Hash + PartialEq
 {
     // TODO figure out:
@@ -117,12 +63,12 @@ pub struct CooldownTrackerV2<K>
     cooldown_map: chashmap::CHashMap<K, CooldownData>,
 }
 
-impl <K> CooldownTrackerV2 <K>
+impl <K> CooldownTracker<K>
     where K: Hash + PartialEq
 {
 
-    pub fn new(init: HashMap<K, Duration>) -> CooldownTrackerV2<K> {
-        CooldownTrackerV2 {
+    pub fn new(init: HashMap<K, Duration>) -> CooldownTracker<K> {
+        CooldownTracker {
             cooldown_map: init
                 .into_iter()
                 .map(|(channel, cooldown)| (
@@ -139,6 +85,10 @@ impl <K> CooldownTrackerV2 <K>
     /// state is reset (i.e. cooldown is triggered).
     /// If there is a cooldown, CooldownState::NotReady is returned.
     pub fn access(&self, channel: &K) -> Option<CooldownState> {
+        if let Some(e) = self.cooldown_map.get(channel) {
+            // don't try to acquire write lock
+            return Some(e.cooldown());
+        }
         self.cooldown_map.get_mut(channel).map(|mut state| state.try_reset())
     }
 

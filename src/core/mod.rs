@@ -25,7 +25,7 @@ use crate::core::bot::{BotState, CommandRegistry, ShareableExecutableCommand};
 use messaging::MessagingState;
 use model::*;
 use crate::core::permissions::PermissionList;
-use crate::core::cooldown::{CooldownTracker, CooldownTrackerV2};
+use crate::core::cooldown::CooldownTracker;
 
 async fn initialize(
     url: Url,
@@ -106,14 +106,14 @@ pub fn run<T: 'static + std::marker::Send + std::marker::Sync>(
     let command_registry = Arc::new(CommandRegistry::new(commands));
     let permission_list = Arc::new(permissions);
 
-    let command_cooldowns = Arc::new(CooldownTrackerV2::new({
+    let command_cooldowns = Arc::new(CooldownTracker::new({
         command_registry.commands.iter().filter_map(|(name, cmd)| {
             let (cd, _) = cmd.cooldown();
             cd.map(|cd| (name.to_string(), cd))
         }).collect()
     }));
 
-    let user_cooldowns = Arc::new(CooldownTrackerV2::new(HashMap::new()));
+    let user_cooldowns = Arc::new(CooldownTracker::new(HashMap::new()));
 
     // Command handling loop
     runtime.spawn(

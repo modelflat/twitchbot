@@ -1,5 +1,3 @@
-use log::*;
-
 use async_std::sync::RwLock;
 use async_trait::async_trait;
 use std::collections::{BTreeSet, HashMap};
@@ -8,7 +6,7 @@ use crate::irc;
 
 use super::model::PreparedMessage;
 use std::time::Duration;
-use crate::core::permissions::{PermissionLevel, PermissionList};
+use crate::core::permissions::PermissionLevel;
 
 // TODO make this generic
 const PREFIX: &str = ">>";

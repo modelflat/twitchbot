@@ -6,18 +6,16 @@ use futures::channel::mpsc::{Receiver, Sender};
 use futures::lock::Mutex;
 use futures::{SinkExt, StreamExt};
 
-use super::bot::{ExecutionOutcome, RawCommand, ShareableBotState};
-use super::model::PreparedMessage;
 use crate::irc;
-use crate::core::bot::CommandRegistry;
+use crate::core::bot::{CommandRegistry, ExecutionOutcome, RawCommand, ShareableBotState};
+use crate::core::model::PreparedMessage;
 use crate::core::permissions::PermissionList;
-use crate::core::model::Action::ExecuteCommand;
-use crate::core::cooldown::{CooldownTracker, CooldownState, CooldownTrackerV2};
+use crate::core::cooldown::{CooldownState, CooldownTracker};
 
 
-type GlobalCooldownTracker = CooldownTrackerV2<String>;
+type GlobalCooldownTracker = CooldownTracker<String>;
 
-type UserCooldownTracker = CooldownTrackerV2<(String, String)>;
+type UserCooldownTracker = CooldownTracker<(String, String)>;
 
 
 async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
@@ -48,7 +46,6 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
                 return;
             }
 
-            let channel = message.first_arg_as_channel_name().unwrap();
             let (command_cooldown, user_cooldown) = executable.cooldown();
 
             let command_user_pair = (command_name.to_string(), user.to_string());
@@ -94,7 +91,7 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
                 },
                 (Some(_), Some(_)) => {
                     if let Some(mut user_write_lock) = user_cooldowns.access_raw(&command_user_pair) {
-                        if user_write_lock.cooldown() {
+                        if user_write_lock.is_cooldown() {
                             info!("{} -> '{}' is on cooldown", user, command_name);
                             return;
                         } else {
