@@ -10,13 +10,13 @@ use url::Url;
 
 pub mod irc;
 pub mod model;
-pub mod executor;
-pub mod messaging;
 pub mod bot;
 pub mod lua;
 pub mod permissions;
 pub mod prelude;
 
+mod executor;
+mod messaging;
 mod cooldown;
 mod history;
 mod util;

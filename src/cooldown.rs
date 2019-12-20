@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::time::{Duration, Instant};
+use std::sync::RwLock;
 
-use chashmap::WriteGuard;
+use chashmap::{WriteGuard, ReadGuard};
 
 pub enum CooldownState {
     Ready,
@@ -11,39 +12,50 @@ pub enum CooldownState {
 
 pub struct CooldownData {
     value: Duration,
-    last_accessed: Instant,
+    last_accessed: RwLock<Instant>,
 }
 
 impl CooldownData {
     pub fn new(cooldown: Duration, reset: bool) -> CooldownData {
         CooldownData {
             value: cooldown,
-            last_accessed: if reset {
+            last_accessed: RwLock::new(if reset {
                 Instant::now() - cooldown
             } else {
                 Instant::now()
-            },
+            }),
         }
     }
 
     /// Tries to reset this cooldown.
-    pub fn try_reset(&mut self) -> CooldownState {
+    pub fn try_reset(&self) -> CooldownState {
         let now = Instant::now();
-        if self.last_accessed + self.value >= now {
-            CooldownState::NotReady(self.last_accessed + self.value - now)
-        } else {
-            self.last_accessed = now;
-            CooldownState::Ready
+        let mut last_accessed = self.last_accessed.write()
+            .expect("lock is poisoned, but this shouldn't have happened");
+
+        let when_reset = *last_accessed + self.value;
+
+        if when_reset >= now {
+            return CooldownState::NotReady(when_reset - now)
         }
+
+        *last_accessed = now;
+
+        CooldownState::Ready
     }
 
     pub fn cooldown(&self) -> CooldownState {
         let now = Instant::now();
-        if self.last_accessed + self.value >= now {
-            CooldownState::NotReady(self.last_accessed + self.value - now)
-        } else {
-            CooldownState::Ready
+        let last_accessed = self.last_accessed.read()
+            .expect("lock is poisoned, but this shouldn't have happened");
+
+        let when_reset = *last_accessed + self.value;
+
+        if when_reset >= now {
+            return CooldownState::NotReady(when_reset - now)
         }
+
+        CooldownState::Ready
     }
 
     pub fn is_cooldown(&self) -> bool {
@@ -82,15 +94,11 @@ where
     /// state is reset (i.e. cooldown is triggered).
     /// If there is a cooldown, CooldownState::NotReady is returned.
     pub fn access(&self, channel: &K) -> Option<CooldownState> {
-        if let Some(e) = self.cooldown_map.get(channel) {
-            // don't try to acquire write lock
-            return Some(e.cooldown());
-        }
-        self.cooldown_map.get_mut(channel).map(|mut state| state.try_reset())
+        self.cooldown_map.get(channel).map(|state| state.try_reset())
     }
 
-    pub fn access_raw(&self, channel: &K) -> Option<WriteGuard<K, CooldownData>> {
-        self.cooldown_map.get_mut(channel)
+    pub fn access_raw(&self, channel: &K) -> Option<ReadGuard<K, CooldownData>> {
+        self.cooldown_map.get(channel)
     }
 
     pub fn contains(&self, channel: &K) -> bool {

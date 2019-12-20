@@ -94,17 +94,24 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
                     }
                 },
                 (Some(_), Some(_)) => {
-                    if let Some(mut user_write_lock) = user_cooldowns.access_raw(&command_user_pair) {
-                        if user_write_lock.is_cooldown() {
+                    if let Some(user_read_lock) = user_cooldowns.access_raw(&command_user_pair) {
+                        if user_read_lock.is_cooldown() {
                             info!("{} -> '{}' is on cooldown", user, command_name);
                             return;
                         } else {
                             match global_cooldowns.access(&command_name) {
-                                Some(CooldownState::Ready) => match user_write_lock.try_reset() {
+                                Some(CooldownState::Ready) => match user_read_lock.try_reset() {
                                     CooldownState::Ready => {
                                         trace!("user and command cooldowns are satisfied");
                                     }
-                                    CooldownState::NotReady(_) => unreachable!("lock guarantees broken"),
+                                    CooldownState::NotReady(remaining) => {
+                                        info!(
+                                            "'{}' is on cooldown ({} s remaining)",
+                                            command_name,
+                                            remaining.as_secs_f64()
+                                        );
+                                        return;
+                                    },
                                 },
                                 Some(CooldownState::NotReady(remaining)) => {
                                     info!(

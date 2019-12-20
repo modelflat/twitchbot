@@ -6,5 +6,4 @@
 ### TODO:
 
 * Receive channel timeouts from ROOMSTATE/USERSTATE
-* Command system (with permissions)
 * Hook system

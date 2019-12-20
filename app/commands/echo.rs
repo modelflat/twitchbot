@@ -29,7 +29,7 @@ impl ExecutableCommand<MyState> for Echo {
     }
 
     fn cooldown(&self) -> (Option<Duration>, Option<Duration>) {
-        (Some(Duration::from_secs(5)), None)
+        (Some(Duration::from_secs(1)), None)
     }
 
     fn level(&self) -> PermissionLevel {

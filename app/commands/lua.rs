@@ -41,7 +41,7 @@ impl ExecutableCommand<MyState> for Lua {
     }
 
     fn cooldown(&self) -> (Option<Duration>, Option<Duration>) {
-        (Some(Duration::from_secs(2)), Some(Duration::from_secs(10)))
+        (Some(Duration::from_secs(1)), Some(Duration::from_secs(5)))
     }
 
     fn level(&self) -> PermissionLevel {
