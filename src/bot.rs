@@ -1,5 +1,5 @@
-use std::time::Duration;
 use std::collections::{BTreeSet, HashMap};
+use std::time::Duration;
 
 use async_std::sync::RwLock;
 use async_trait::async_trait;

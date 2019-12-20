@@ -1,5 +1,5 @@
-use modelflat_bot::prelude::*;
 use modelflat_bot::lua::run_untrusted_lua_code;
+use modelflat_bot::prelude::*;
 
 use super::MyState;
 
@@ -29,8 +29,7 @@ impl ExecutableCommand<MyState> for Lua {
             ExecutionOutcome::success(
                 message.first_arg_as_channel_name().unwrap().to_string(),
                 match result {
-                    Ok(result) => format!("@{}, ({}) res = {}", user,
-                                          result.instructions_left, result.result),
+                    Ok(result) => format!("@{}, ({}) res = {}", user, result.instructions_left, result.result),
                     Err(err) => format!("@{}, error! {}", user, err),
                 },
             )

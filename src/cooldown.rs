@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::time::{Duration, Instant};
 use std::sync::RwLock;
+use std::time::{Duration, Instant};
 
-use chashmap::{WriteGuard, ReadGuard};
+use chashmap::ReadGuard;
 
 pub enum CooldownState {
     Ready,
@@ -30,13 +30,15 @@ impl CooldownData {
     /// Tries to reset this cooldown.
     pub fn try_reset(&self) -> CooldownState {
         let now = Instant::now();
-        let mut last_accessed = self.last_accessed.write()
+        let mut last_accessed = self
+            .last_accessed
+            .write()
             .expect("lock is poisoned, but this shouldn't have happened");
 
         let when_reset = *last_accessed + self.value;
 
         if when_reset >= now {
-            return CooldownState::NotReady(when_reset - now)
+            return CooldownState::NotReady(when_reset - now);
         }
 
         *last_accessed = now;
@@ -46,13 +48,15 @@ impl CooldownData {
 
     pub fn cooldown(&self) -> CooldownState {
         let now = Instant::now();
-        let last_accessed = self.last_accessed.read()
+        let last_accessed = self
+            .last_accessed
+            .read()
             .expect("lock is poisoned, but this shouldn't have happened");
 
         let when_reset = *last_accessed + self.value;
 
         if when_reset >= now {
-            return CooldownState::NotReady(when_reset - now)
+            return CooldownState::NotReady(when_reset - now);
         }
 
         CooldownState::Ready
@@ -94,7 +98,8 @@ where
     /// state is reset (i.e. cooldown is triggered).
     /// If there is a cooldown, CooldownState::NotReady is returned.
     pub fn access(&self, channel: &K) -> Option<CooldownState> {
-        self.cooldown_map.get(channel)
+        self.cooldown_map
+            .get(channel)
             .filter(|state| !state.is_cooldown())
             .map(|state| state.try_reset())
     }

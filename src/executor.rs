@@ -8,9 +8,9 @@ use futures::{SinkExt, StreamExt};
 
 use crate::bot::{CommandRegistry, ExecutionOutcome, RawCommand, ShareableBotState};
 use crate::cooldown::{CooldownState, CooldownTracker};
+use crate::irc;
 use crate::model::PreparedMessage;
 use crate::permissions::PermissionList;
-use crate::irc;
 
 type GlobalCooldownTracker = CooldownTracker<String>;
 
@@ -111,7 +111,7 @@ async fn execute<T: 'static + std::marker::Send + std::marker::Sync>(
                                             remaining.as_secs_f64()
                                         );
                                         return;
-                                    },
+                                    }
                                 },
                                 Some(CooldownState::NotReady(remaining)) => {
                                     info!(

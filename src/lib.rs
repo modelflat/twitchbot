@@ -8,24 +8,24 @@ use futures::channel::mpsc::channel;
 use futures::{SinkExt, StreamExt};
 use url::Url;
 
-pub mod irc;
-pub mod model;
 pub mod bot;
+pub mod irc;
 pub mod lua;
+pub mod model;
 pub mod permissions;
 pub mod prelude;
 
-mod executor;
-mod messaging;
 mod cooldown;
+mod executor;
 mod history;
+mod messaging;
 mod util;
 
 use bot::{BotState, CommandRegistry, ShareableExecutableCommand};
 use cooldown::CooldownTracker;
-use permissions::PermissionList;
 use messaging::MessagingState;
 use model::*;
+use permissions::PermissionList;
 
 async fn initialize(
     url: Url,
