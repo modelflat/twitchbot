@@ -75,3 +75,94 @@ where
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use futures::task::SpawnExt;
+
+    macro_rules! async_test {
+        ($b:block) => {
+            let mut pool = futures::executor::LocalPool::new();
+            pool.spawner().spawn((async move || $b)()).unwrap();
+            pool.run();
+        };
+    }
+
+    #[test]
+    fn test_missing_item() {
+        async_test!({
+            let channel = "test".to_string();
+            let history = History::new(vec![channel.clone()], Duration::from_secs(1));
+
+            match history.contains(&channel, &"message".to_string()).await {
+                Some(0) => assert!(true),
+                Some(_) => assert!(false, "message is found, but was never inserted"),
+                None => assert!(false, "channel was lost"),
+            }
+        });
+    }
+
+    #[test]
+    fn test_item_can_be_found() {
+        async_test!({
+            let channel = "test".to_string();
+            let history = History::new(vec![channel.clone()], Duration::from_secs(1));
+
+            history.push(&channel, "message".to_string()).await;
+
+            match history.contains(&channel, &"message".to_string()).await {
+                Some(0) => assert!(false, "message was inserted, but cannot be found"),
+                Some(_) => assert!(true),
+                None => assert!(false, "channel was lost"),
+            }
+        });
+    }
+
+
+    #[test]
+    fn test_number_of_times_item_was_found_is_tracked() {
+        async_test!({
+            let channel = "test".to_string();
+            let history = History::new(vec![channel.clone()], Duration::from_secs(1));
+
+            history.push(&channel, "message".to_string()).await;
+
+            match history.contains(&channel, &"message".to_string()).await {
+                Some(1) => assert!(true),
+                Some(n) => assert!(false,
+                    "item was searched for for the first time, \
+                    but history says it was found {} times", n),
+                None => assert!(false, "message was lost in history"),
+            }
+
+            match history.contains(&channel, &"message".to_string()).await {
+                Some(2) => assert!(true),
+                Some(n) => assert!(false,
+                    "item was searched for for the second time, \
+                    but history says it was found {} times", n),
+                None => assert!(false, "message was lost in history"),
+            }
+        });
+    }
+
+    #[test]
+    fn test_items_expire_according_to_ttl() {
+        async_test!({
+            let channel = "test".to_string();
+            let history = History::new(vec![channel.clone()], Duration::from_millis(10));
+
+            history.push(&channel, "message".to_string()).await;
+
+            std::thread::sleep(Duration::from_millis(10));
+
+            match history.contains(&channel, &"message".to_string()).await {
+                Some(0) => assert!(true),
+                Some(_) => assert!(false, "item should have already expired"),
+                None => assert!(true),
+            }
+        });
+    }
+
+}
