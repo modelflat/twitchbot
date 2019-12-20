@@ -94,7 +94,9 @@ where
     /// state is reset (i.e. cooldown is triggered).
     /// If there is a cooldown, CooldownState::NotReady is returned.
     pub fn access(&self, channel: &K) -> Option<CooldownState> {
-        self.cooldown_map.get(channel).map(|state| state.try_reset())
+        self.cooldown_map.get(channel)
+            .filter(|state| !state.is_cooldown())
+            .map(|state| state.try_reset())
     }
 
     pub fn access_raw(&self, channel: &K) -> Option<ReadGuard<K, CooldownData>> {
