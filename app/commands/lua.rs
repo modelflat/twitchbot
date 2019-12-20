@@ -11,8 +11,7 @@ impl ExecutableCommand<MyState> for Lua {
         &self,
         command: &'a str,
         message: irc::Message<'a>,
-        _: &ShareableBotState<MyState>,
-        _: &ReadonlyState<MyState>,
+        _: &BotState<MyState>,
     ) -> ExecutionOutcome {
         if !command.is_empty() {
             let user = message.tag_value("display-name").unwrap_or("<no-display-name>");
@@ -45,8 +44,11 @@ impl ExecutableCommand<MyState> for Lua {
             .to_string()
     }
 
-    fn cooldown(&self) -> (Option<Duration>, Option<Duration>) {
-        (Some(Duration::from_secs(1)), Some(Duration::from_secs(5)))
+    fn cooldown(&self) -> CommandCooldown {
+        CommandCooldown {
+            command: Some(Duration::from_secs(5)),
+            user: Some(Duration::from_secs(5)),
+        }
     }
 
     fn level(&self) -> PermissionLevel {

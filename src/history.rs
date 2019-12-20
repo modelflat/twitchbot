@@ -120,7 +120,6 @@ mod tests {
         });
     }
 
-
     #[test]
     fn test_number_of_times_item_was_found_is_tracked() {
         async_test!({
@@ -131,17 +130,23 @@ mod tests {
 
             match history.contains(&channel, &"message".to_string()).await {
                 Some(1) => assert!(true),
-                Some(n) => assert!(false,
+                Some(n) => assert!(
+                    false,
                     "item was searched for for the first time, \
-                    but history says it was found {} times", n),
+                    but history says it was found {} times",
+                    n
+                ),
                 None => assert!(false, "message was lost in history"),
             }
 
             match history.contains(&channel, &"message".to_string()).await {
                 Some(2) => assert!(true),
-                Some(n) => assert!(false,
+                Some(n) => assert!(
+                    false,
                     "item was searched for for the second time, \
-                    but history says it was found {} times", n),
+                    but history says it was found {} times",
+                    n
+                ),
                 None => assert!(false, "message was lost in history"),
             }
         });
@@ -164,5 +169,4 @@ mod tests {
             }
         });
     }
-
 }

@@ -42,10 +42,7 @@ mod tests {
     use super::*;
 
     fn exhaustive_list_of_variants() -> Vec<PermissionLevel> {
-        let variants = vec![
-            PermissionLevel::User,
-            PermissionLevel::Admin
-        ];
+        let variants = vec![PermissionLevel::User, PermissionLevel::Admin];
         for var in variants.iter() {
             match var {
                 PermissionLevel::Admin => assert!(true),
@@ -61,8 +58,12 @@ mod tests {
     fn test_lowest_is_lowest() {
         let lowest = PermissionLevel::lowest();
         for level in exhaustive_list_of_variants().iter() {
-            assert!(level.permits(lowest),
-                    "{:?} is lowest, but is not permitted by {:?}", lowest, level);
+            assert!(
+                level.permits(lowest),
+                "{:?} is lowest, but is not permitted by {:?}",
+                lowest,
+                level
+            );
         }
     }
 
@@ -70,8 +71,12 @@ mod tests {
     fn test_highest_is_highest() {
         let highest = PermissionLevel::highest();
         for level in exhaustive_list_of_variants().iter() {
-            assert!(highest.permits(*level),
-                    "{:?} is highest, but does not permit {:?}", highest, level);
+            assert!(
+                highest.permits(*level),
+                "{:?} is highest, but does not permit {:?}",
+                highest,
+                level
+            );
         }
     }
 }

@@ -6,13 +6,7 @@ pub struct Bot;
 
 #[async_trait]
 impl ExecutableCommand<MyState> for Bot {
-    async fn execute<'a>(
-        &self,
-        _: &'a str,
-        message: irc::Message<'a>,
-        _: &ShareableBotState<MyState>,
-        _: &ReadonlyState<MyState>,
-    ) -> ExecutionOutcome {
+    async fn execute<'a>(&self, _: &'a str, message: irc::Message<'a>, _: &BotState<MyState>) -> ExecutionOutcome {
         ExecutionOutcome::success(
             message.first_arg_as_channel_name().unwrap().to_string(),
             "\
@@ -29,8 +23,11 @@ impl ExecutableCommand<MyState> for Bot {
         "bot -- describes bot".to_string()
     }
 
-    fn cooldown(&self) -> (Option<Duration>, Option<Duration>) {
-        (Some(Duration::from_secs(5)), None)
+    fn cooldown(&self) -> CommandCooldown {
+        CommandCooldown {
+            command: Some(Duration::from_secs(5)),
+            user: None,
+        }
     }
 
     fn level(&self) -> PermissionLevel {

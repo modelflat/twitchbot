@@ -10,8 +10,7 @@ impl ExecutableCommand<MyState> for Echo {
         &self,
         command: &'a str,
         message: irc::Message<'a>,
-        _: &ShareableBotState<MyState>,
-        _: &ReadonlyState<MyState>,
+        _: &BotState<MyState>,
     ) -> ExecutionOutcome {
         if command.is_empty() {
             info!("nothing to echo!");
@@ -28,8 +27,11 @@ impl ExecutableCommand<MyState> for Echo {
         "echo <message> -- echoes message back".to_string()
     }
 
-    fn cooldown(&self) -> (Option<Duration>, Option<Duration>) {
-        (Some(Duration::from_secs(1)), None)
+    fn cooldown(&self) -> CommandCooldown {
+        CommandCooldown {
+            command: Some(Duration::from_secs(1)),
+            user: None,
+        }
     }
 
     fn level(&self) -> PermissionLevel {

@@ -1,13 +1,24 @@
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_std::net::TcpStream;
+use async_std::sync::Mutex;
+
+use async_tungstenite::{connect_async, MaybeTlsStream};
+
 use futures::channel::mpsc::{Receiver, Sender};
+use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 
+use log::*;
 use tungstenite::Message;
+use url::Url;
 
-use crate::bot::{CommandRegistry, RawCommand};
 use crate::cooldown::{CooldownState, CooldownTracker};
+use crate::executor::PreparedCommand;
 use crate::history::History;
 use crate::irc;
-use crate::model::*;
+use crate::state::BotState;
 use crate::util::modify_message;
 
 pub struct MessagingState {
@@ -24,12 +35,67 @@ impl MessagingState {
     }
 }
 
+#[derive(Debug)]
+pub enum Action {
+    ExecuteCommand(PreparedCommand),
+    SendMessage(String),
+    None,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedMessage {
+    pub channel: String,
+    pub message: String,
+}
+
+type WebSocketStreamSink = async_tungstenite::WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+type WebSocketSharedSink = Arc<Mutex<SplitSink<WebSocketStreamSink, Message>>>;
+
+type WebSocketStream = SplitStream<WebSocketStreamSink>;
+
+/// This function initializes messaging stream.
+pub async fn initialize(
+    url: Url,
+    username: &str,
+    password: &str,
+    channels: impl Iterator<Item = &String>,
+) -> WebSocketStreamSink {
+    let (mut ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+
+    // login to twitch IRC
+    ws_stream
+        .send(Message::Text(format!("PASS oauth:{}", password)))
+        .await
+        .unwrap();
+    ws_stream
+        .send(Message::Text(format!("NICK {}", username)))
+        .await
+        .unwrap();
+    ws_stream
+        .send(Message::Text(
+            "CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership".to_owned(),
+        ))
+        .await
+        .unwrap();
+
+    // join channels
+    for channel in channels {
+        ws_stream
+            .send(Message::Text(format!("JOIN #{}", channel)))
+            .await
+            .unwrap();
+    }
+
+    ws_stream
+}
+
 /// This function acts as event loop for reading messages from socket.
-pub(crate) async fn receiver_event_loop<T: 'static + std::marker::Send + std::marker::Sync>(
+pub async fn receiver_event_loop<T: 'static + std::marker::Send + std::marker::Sync>(
     rx_socket: WebSocketStream,
     tx_socket: WebSocketSharedSink,
-    tx_command: Sender<RawCommand>,
-    command_registry: Arc<CommandRegistry<T>>,
+    tx_command: Sender<PreparedCommand>,
+    state: Arc<BotState<T>>,
 ) {
     let mut rx_socket = rx_socket;
     let mut tx_command = tx_command;
@@ -42,8 +108,11 @@ pub(crate) async fn receiver_event_loop<T: 'static + std::marker::Send + std::ma
                         Ok(message) => {
                             let action = match message.command.name {
                                 "PRIVMSG" => {
-                                    if command_registry.is_command(&message) {
-                                        Action::ExecuteCommand(raw_message.to_string())
+                                    if let Some(command) = state.try_convert_to_command(&message) {
+                                        Action::ExecuteCommand(PreparedCommand {
+                                            message: raw_message.to_string(),
+                                            command,
+                                        })
                                     } else {
                                         info!("{}", message);
                                         Action::None
