@@ -24,6 +24,7 @@ script:
       --token $CODECOV_TOKEN \
       --commit-sha "$(git rev-parse HEAD)";
     bash <(curl -s https://codecov.io/bash) -f codecov.json;
+  - cargo clean
 branches:
   only:
     - master
