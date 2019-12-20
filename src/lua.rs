@@ -76,6 +76,17 @@ pub struct SuccessfulExecution {
     pub result: String,
 }
 
+fn strip_location(s: &str) -> &str {
+    if  s.starts_with("[string") {
+        if let Some(loc1) = s.find("]:") {
+            if let Some(loc2) = &s[loc1..].find(' ') {
+                return &s[loc1 + *loc2..].trim()
+            }
+        }
+    }
+    s
+}
+
 /// Runs lua code in a sandbox.
 pub fn run_untrusted_lua_code(source_code: String, instruction_limit: i32, memory_limit: usize)
     -> Result<SuccessfulExecution, String>
@@ -114,8 +125,8 @@ pub fn run_untrusted_lua_code(source_code: String, instruction_limit: i32, memor
                     result: format!("{}", result)
                 })
             },
-            Ok((ExecutionStatus::CompilationError, str)) | Ok((ExecutionStatus::RuntimeError, str)) => {
-                Err(format!("ERROR: {}", str))
+            Ok((ExecutionStatus::CompilationError, s)) | Ok((ExecutionStatus::RuntimeError, s)) => {
+                Err(format!("ERROR: {}", strip_location(&s)))
             },
             Err(err) => {
                 if ref_timeout_raised.load(Ordering::SeqCst) {
@@ -201,7 +212,7 @@ mod tests {
         match result {
             Ok(SuccessfulExecution { result, .. }) =>
                 assert!(false, "should abort with error, returned '{}' instead", result),
-            Err(e) => assert!(true, "should abort with error"),
+            Err(_) => assert!(true, "should abort with error"),
         };
     }
 
