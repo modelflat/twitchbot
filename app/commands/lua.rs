@@ -19,12 +19,18 @@ impl ExecutableCommand<MyState> for Lua {
 
             info!("{} is executing Lua: {}", user, command);
 
-            let result = run_untrusted_lua_code(command.to_string());
+            let instructions = 1 << 10;
+
+            // ought to be enough for anyone
+            let memory = 640 * (1 << 10);
+
+            let result = run_untrusted_lua_code(command.to_string(), instructions, memory);
 
             ExecutionOutcome::success(
                 message.first_arg_as_channel_name().unwrap().to_string(),
                 match result {
-                    Ok(result) => format!("@{}, result = {}", user, result),
+                    Ok(result) => format!("@{}, ({}) res = {}", user,
+                                          result.instructions_left, result.result),
                     Err(err) => format!("@{}, error! {}", user, err),
                 },
             )
@@ -36,7 +42,7 @@ impl ExecutableCommand<MyState> for Lua {
 
     fn help(&self) -> String {
         "lua <code> -- executes your code in a Lua sandbox. \
-        limits: 640kb of memory, 1000 instructions FeelsGoodMan"
+        limits: 640kb of memory, ~1000 instructions FeelsGoodMan"
             .to_string()
     }
 
