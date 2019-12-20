@@ -100,8 +100,12 @@ where
     pub fn access(&self, channel: &K) -> Option<CooldownState> {
         self.cooldown_map
             .get(channel)
-            .filter(|state| !state.is_cooldown())
-            .map(|state| state.try_reset())
+            .map(|state| {
+                match state.cooldown() {
+                    CooldownState::Ready => state.try_reset(),
+                    not_ready => not_ready
+                }
+            })
     }
 
     pub fn access_raw(&self, channel: &K) -> Option<ReadGuard<K, CooldownData>> {
@@ -123,4 +127,106 @@ where
     pub fn add_channel(&self, channel: K, cooldown: Duration, reset: bool) {
         self.cooldown_map.insert(channel, CooldownData::new(cooldown, reset));
     }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_cooldown_is_tracked() {
+        let channel = 1;
+
+        let tracker = CooldownTracker::<i32>::new({
+            let mut map = HashMap::new();
+            map.insert(channel, Duration::from_millis(10));
+            map
+        });
+
+        match tracker.access(&channel) {
+            Some(CooldownState::Ready) =>
+                assert!(true),
+            Some(CooldownState::NotReady(_)) =>
+                assert!(false, "untouched channel should not be on cooldown"),
+            None =>
+                assert!(false, "channel was not added to tracker"),
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+
+        match tracker.access(&channel) {
+            Some(CooldownState::Ready) =>
+                assert!(false, "cooldown shouldn't have passed yet"),
+            Some(CooldownState::NotReady(duration)) =>
+                assert!(duration <= Duration::from_millis(5),
+                        "at least 5 ms should have already passed"),
+            None =>
+                assert!(false, "channel was not added to tracker"),
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+
+        match tracker.access(&channel) {
+            Some(CooldownState::Ready) =>
+                assert!(true),
+            Some(CooldownState::NotReady(_)) =>
+                assert!(false, "cooldown should have already passed"),
+            None =>
+                assert!(false, "channel was not added to tracker"),
+        }
+    }
+
+    #[test]
+    fn test_cooldown_can_be_updated() {
+        let channel = 1;
+
+        let tracker = CooldownTracker::<i32>::new({
+            let mut map = HashMap::new();
+            map.insert(channel, Duration::from_millis(10));
+            map
+        });
+
+        match tracker.access(&channel) {
+            Some(CooldownState::Ready) => assert!(true),
+            _ => assert!(false),
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+
+        match tracker.access(&channel) {
+            Some(CooldownState::NotReady(duration)) =>
+                assert!(duration <= Duration::from_millis(5),
+                        "at least 5 ms should have already passed"),
+            _ => assert!(false),
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+
+        match tracker.access(&channel) {
+            Some(CooldownState::Ready) => assert!(true),
+            _ => assert!(false),
+        }
+
+        std::thread::sleep(Duration::from_millis(15));
+
+        tracker.update(&channel, Duration::from_millis(20));
+
+        match tracker.access(&channel) {
+            Some(CooldownState::Ready) =>
+                assert!(false, "readiness of channel should be affected immediately after update"),
+            Some(CooldownState::NotReady(_)) => assert!(true),
+            None => assert!(false, "channel was lost"),
+        }
+
+        std::thread::sleep(Duration::from_millis(5));
+
+        match tracker.access(&channel) {
+            Some(CooldownState::Ready) => assert!(true),
+            Some(CooldownState::NotReady(_)) =>
+                assert!(false, "channel should be ready by this time"),
+            None => assert!(false, "channel was lost"),
+        }
+    }
+
 }
