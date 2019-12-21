@@ -198,7 +198,7 @@ mod tests {
             _ => assert!(false),
         }
 
-        std::thread::sleep(Duration::from_millis(15));
+        std::thread::sleep(Duration::from_millis(10));
 
         tracker.update(&channel, Duration::from_millis(20));
 
@@ -211,7 +211,7 @@ mod tests {
             None => assert!(false, "channel was lost"),
         }
 
-        std::thread::sleep(Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(10));
 
         match tracker.access(&channel) {
             Some(CooldownState::Ready) => assert!(true),
