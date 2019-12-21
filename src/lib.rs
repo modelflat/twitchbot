@@ -57,7 +57,7 @@ pub fn run<T: 'static + Send + Sync>(
         &channels,
         Duration::from_secs(1),
         Duration::from_secs(30),
-        "https://forsen.tv/api/v1/banphrases/test".to_string(),
+        "https://pajlada.pajbot.com/api/v1/banphrases/test".to_string(),
     ));
 
     let bot_state = Arc::new(BotState::new(
