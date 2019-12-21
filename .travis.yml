@@ -26,11 +26,10 @@ script:
     bash <(curl -s https://codecov.io/bash) -f codecov.json;
   - cargo clean
   - |
-    export CURRENT_TAG="$(git describe --exact-match --abbrev=0 2>/dev/null)"
-    if [ -n "${CURRENT_TAG}" ]; then
-      echo "Deploying version: ${CURRENT_TAG}"
+    if [ -n "${TRAVIS_TAG}" ]; then
+      echo "Deploying version: ${TRAVIS_TAG}"
       echo ${SSH_KEY} > ssh_key
-      ssh -i ./ssh_key twitchbot@feelsdankman.com "./deploy.sh ${CURRENT_TAG} ; exit"
+      ssh -i ./ssh_key twitchbot@feelsdankman.com "./deploy.sh ${TRAVIS_TAG} ; exit"
       rm -P ssh_key
     else
       echo "No tag found, skipping deploy step..."
