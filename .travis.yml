@@ -6,7 +6,7 @@ cache:
 install:
   - cargo install grcov
 script:
-  - export PROJECT_NAME=modelflat_bot
+  - export PROJECT_NAME=bot
   - export CARGO_INCREMENTAL=0
   - export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Zno-landing-pads"
   - cargo clean
