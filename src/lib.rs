@@ -17,6 +17,7 @@ pub mod permissions;
 pub mod prelude;
 pub mod state;
 
+mod banphrase;
 mod cooldown;
 mod executor;
 mod history;
@@ -56,6 +57,7 @@ pub fn run<T: 'static + Send + Sync>(
         &channels,
         Duration::from_secs(1),
         Duration::from_secs(30),
+        "https://forsen.tv/api/v1/banphrases/test".to_string(),
     ));
 
     let bot_state = Arc::new(BotState::new(
@@ -71,7 +73,7 @@ pub fn run<T: 'static + Send + Sync>(
     runtime.spawn(messaging::sender_event_loop(
         rx_message,
         tx_socket.clone(),
-        messaging_state,
+        messaging_state.clone(),
         concurrency,
     ));
 
@@ -89,5 +91,6 @@ pub fn run<T: 'static + Send + Sync>(
         tx_socket,
         tx_command,
         bot_state.clone(),
+        messaging_state.clone(),
     ));
 }

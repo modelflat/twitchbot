@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use modelflat_bot::prelude::*;
+use bot::prelude::*;
 
 mod help;
 use help::Help;
 
-mod bot;
-use bot::Bot;
+mod bot_description;
+use bot_description::BotDescription;
 
 mod echo;
 use echo::Echo;
@@ -28,7 +28,7 @@ pub fn state() -> MyState {
 
 pub fn commands() -> HashMap<String, ShareableExecutableCommand<MyState>> {
     let mut map: HashMap<String, ShareableExecutableCommand<MyState>> = HashMap::new();
-    map.insert("bot".to_string(), Box::new(Bot {}));
+    map.insert("bot".to_string(), Box::new(BotDescription {}));
     map.insert("echo".to_string(), Box::new(Echo {}));
     map.insert("lua".to_string(), Box::new(Lua {}));
     map.insert("help".to_string(), Box::new(Help {}));

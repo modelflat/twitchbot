@@ -1,11 +1,11 @@
-use modelflat_bot::prelude::*;
+use bot::prelude::*;
 
 use super::MyState;
 
-pub struct Bot;
+pub struct BotDescription;
 
 #[async_trait]
-impl ExecutableCommand<MyState> for Bot {
+impl ExecutableCommand<MyState> for BotDescription {
     async fn execute<'a>(&self, _: &'a str, message: irc::Message<'a>, _: &BotState<MyState>) -> ExecutionOutcome {
         ExecutionOutcome::success(
             message.first_arg_as_channel_name().unwrap().to_string(),

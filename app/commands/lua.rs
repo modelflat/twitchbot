@@ -1,5 +1,5 @@
-use modelflat_bot::lua::run_untrusted_lua_code;
-use modelflat_bot::prelude::*;
+use bot::lua::run_untrusted_lua_code;
+use bot::prelude::*;
 
 use super::MyState;
 

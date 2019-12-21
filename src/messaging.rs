@@ -14,6 +14,7 @@ use log::*;
 use tungstenite::Message;
 use url::Url;
 
+use crate::banphrase::{BanphraseAPI, BanphraseResponse};
 use crate::cooldown::{CooldownState, CooldownTracker};
 use crate::executor::PreparedCommand;
 use crate::history::History;
@@ -21,16 +22,23 @@ use crate::irc;
 use crate::state::BotState;
 use crate::util::modify_message;
 
-pub struct MessagingState {
+pub(crate) struct MessagingState {
     pub cooldowns: CooldownTracker<String>,
     pub history: History<String>,
+    pub banphrase_api: BanphraseAPI,
 }
 
 impl MessagingState {
-    pub fn new(channels: &Vec<String>, initial_cooldown: Duration, history_ttl: Duration) -> MessagingState {
+    pub fn new(
+        channels: &Vec<String>,
+        initial_cooldown: Duration,
+        history_ttl: Duration,
+        banphrase_api_url: String,
+    ) -> MessagingState {
         MessagingState {
             cooldowns: CooldownTracker::new(channels.iter().map(|c| (c.to_string(), initial_cooldown)).collect()),
             history: History::new(channels.iter().map(|c| c.to_string()).collect(), history_ttl),
+            banphrase_api: BanphraseAPI::new(banphrase_api_url),
         }
     }
 }
@@ -55,7 +63,7 @@ type WebSocketSharedSink = Arc<Mutex<SplitSink<WebSocketStreamSink, Message>>>;
 type WebSocketStream = SplitStream<WebSocketStreamSink>;
 
 /// This function initializes messaging stream.
-pub async fn initialize(
+pub(crate) async fn initialize(
     url: Url,
     username: &str,
     password: &str,
@@ -91,11 +99,12 @@ pub async fn initialize(
 }
 
 /// This function acts as event loop for reading messages from socket.
-pub async fn receiver_event_loop<T: 'static + std::marker::Send + std::marker::Sync>(
+pub(crate) async fn receiver_event_loop<T: 'static + Send + Sync>(
     rx_socket: WebSocketStream,
     tx_socket: WebSocketSharedSink,
     tx_command: Sender<PreparedCommand>,
     state: Arc<BotState<T>>,
+    messaging_state: Arc<MessagingState>,
 ) {
     let mut rx_socket = rx_socket;
     let mut tx_command = tx_command;
@@ -125,6 +134,23 @@ pub async fn receiver_event_loop<T: 'static + std::marker::Send + std::marker::S
                                             .with_trailing(message.trailing.unwrap_or(""))
                                             .string(),
                                     )
+                                }
+                                "USERSTATE" => {
+                                    const MODERATOR_CD: Duration = Duration::from_millis(100);
+
+                                    let channel = message.first_arg_as_channel_name().unwrap().to_string();
+                                    info!("received USERSTATE: {}", raw_message);
+
+                                    for badge in message.tag_value("badges").unwrap_or("").split_terminator(',') {
+                                        if badge.starts_with("moderator") {
+                                            info!(
+                                                "updated cooldown to {:?} for channel {} because of moderator status",
+                                                MODERATOR_CD, channel
+                                            );
+                                            messaging_state.cooldowns.update(&channel, MODERATOR_CD);
+                                        }
+                                    }
+                                    Action::None
                                 }
                                 cmd => {
                                     info!("no handler for command {} / {}", cmd, message);
@@ -166,48 +192,105 @@ pub(crate) async fn sender_event_loop(
     let get_state = || state.clone();
 
     rx_message
-        .for_each_concurrent(concurrency, async move |mut message| {
-            // TODO revise this -- maybe bad in terms of performance
-            // 1. consult cooldown tracker
-            match get_state().cooldowns.access(&message.channel) {
-                Some(CooldownState::NotReady(how_long)) => tokio::timer::delay_for(how_long).await,
-                Some(CooldownState::Ready) => {} // ready to send
-                None => {
-                    error!("No such channel: {}", message.channel);
-                    return;
-                }
-            }
-            // 2. consult message history
-            let mut should_add_to_history = false;
-            match get_state().history.contains(&message.channel, &message.message).await {
-                Some(0) => should_add_to_history = true,
-                Some(n) => modify_message(&mut message.message, n - 1),
-                None => {
-                    error!("No such channel: {}", message.channel);
-                    return;
-                }
-            }
-            if should_add_to_history {
-                get_state()
-                    .history
-                    .push(&message.channel, message.message.clone())
-                    .await;
-            }
-            // 3. prepare message
-            message.channel.insert(0, '#');
-            let text = irc::MessageBuilder::new("PRIVMSG")
-                .with_arg(&message.channel)
-                .with_trailing(&message.message)
-                .string();
+        .for_each_concurrent(
+            concurrency,
+            async move |PreparedMessage {
+                            mut message,
+                            mut channel,
+                        }| {
+                // consult cooldown tracker and/or banphrase API
+                let banphrase_future = get_state().banphrase_api.check(message.clone());
+                let response = match get_state().cooldowns.access_raw(&channel) {
+                    Some(read_lock) => {
+                        // let's simply check for cooldown first
+                        match read_lock.cooldown() {
+                            CooldownState::Ready => {
+                                // if this is ready, we don't really care -- we need to check banphrase
+                                // api first.
+                                banphrase_future.await
+                            }
+                            CooldownState::NotReady(how_long) => {
+                                // if this is not ready, we can align banphrase api request and waiting
+                                // time.
+                                futures::future::join(tokio::timer::delay_for(how_long), banphrase_future)
+                                    .await
+                                    .1
+                            }
+                        }
+                    }
+                    None => {
+                        error!("No such channel: {}", channel);
+                        return;
+                    }
+                };
 
-            // 4. send message
-            info!("Sending message: {:?}", text);
-            get_tx_socket()
-                .lock()
-                .await
-                .send(Message::text(text))
-                .await
-                .expect("Failed to send message");
-        })
+                // now that we've got response from banphrase api, lets check it
+                match response {
+                    Ok(r) => match r.json::<BanphraseResponse>().await {
+                        Ok(r) => {
+                            if r.banned {
+                                info!("banphrase API says that message is banned -- not sending ({})", message);
+                                return;
+                            }
+                        }
+                        Err(e) => {
+                            error!("weird response from banphrase API: {:?}", e);
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        error!("failed to consult banphrase API: {:?}", e);
+                        return;
+                    }
+                }
+
+                // ok, so message is not a banphrase. now we should consult history to find out
+                // whether do we need to modify it
+                // TODO what if modification results in a message becoming banphrase?
+                let mut should_add_to_history = false;
+                match get_state().history.contains(&channel, &message).await {
+                    Some(0) => should_add_to_history = true,
+                    Some(n) => modify_message(&mut message, n - 1),
+                    None => {
+                        error!("No such channel: {}", channel);
+                        return;
+                    }
+                }
+
+                if should_add_to_history {
+                    get_state().history.push(&channel, message.clone()).await;
+                }
+
+                // bu-u-ut here we need to consult cooldown tracker again to find out whether we can
+                // send this message
+                match get_state().cooldowns.access_raw(&channel) {
+                    Some(read_lock) => {
+                        if let CooldownState::NotReady(how_long) = read_lock.try_reset() {
+                            tokio::timer::delay_for(how_long).await;
+                        }
+
+                        channel.insert(0, '#');
+
+                        let text = irc::MessageBuilder::new("PRIVMSG")
+                            .with_arg(&channel)
+                            .with_trailing(&message)
+                            .string();
+
+                        info!("Sending message: {:?}", text);
+
+                        get_tx_socket()
+                            .lock()
+                            .await
+                            .send(Message::text(text))
+                            .await
+                            .expect("Failed to send message");
+                    }
+                    None => {
+                        error!("No such channel: {}", channel);
+                        return;
+                    }
+                }
+            },
+        )
         .await;
 }
