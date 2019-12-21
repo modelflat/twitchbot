@@ -13,19 +13,18 @@ name = "modelflat_bot"
 path = "app/main.rs"
 
 [dependencies]
-url = "*"
-tungstenite = "*"
-log = "*"
-env_logger = "*"
-async-std = "*"
-async-trait = "*"
-futures = "*"
-futures-locks = "*"
-rlua = "*"
-chashmap = "*"
+url = "2.1"
+log = "0.4"
+env_logger = "0.7"
+async-std = "1.4"
+async-trait = "0.1"
+futures = "0.3"
+futures-locks = "0.5"
+rlua = "0.17"
+chashmap = "2.2"
 
 [dependencies.serde]
-version = "*"
+version = "1.0"
 features = [ "derive" ]
 
 [dependencies.reqwest]
@@ -36,7 +35,10 @@ features = [ "json" ]
 version = "0.2.0-alpha.6"
 features = [ "rt-full", "macros" ]
 
+[dependencies.tungstenite]
+version = "0.9"
+
 [dependencies.async-tungstenite]
-version = "*"
+version = "0.2"
 default-features = false
 features = [ "connect", "native-tls", "async_std_runtime", "tls-base" ]
