@@ -9,7 +9,6 @@ pub type Commands<T> = HashMap<String, ShareableExecutableCommand<T>>;
 
 pub struct BotState<T: 'static + Send + Sync> {
     pub username: String,
-    pub username_with_at: String,
     pub prefix: String,
     pub channels: BTreeSet<String>,
     pub commands: Commands<T>,
@@ -27,7 +26,6 @@ impl<T: 'static + Send + Sync> BotState<T> {
         data: T,
     ) -> BotState<T> {
         BotState {
-            username_with_at: format!("@{}", username),
             username,
             prefix,
             channels: channels.into_iter().map(|s| s.to_string()).collect(),
@@ -42,8 +40,8 @@ impl<T: 'static + Send + Sync> BotState<T> {
             if s.starts_with(&self.prefix) {
                 return Some((&s[self.prefix.len()..]).trim_start().to_string());
             }
-            if s.starts_with(&self.username_with_at) {
-                return Some((&s[self.username_with_at.len()..]).trim_start().to_string());
+            if s.starts_with(&self.username) {
+                return Some((&s[self.username.len()..]).trim_start().to_string());
             }
         }
         None

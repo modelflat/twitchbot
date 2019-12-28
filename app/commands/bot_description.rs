@@ -10,7 +10,7 @@ impl ExecutableCommand<MyState> for BotDescription {
         ExecutionOutcome::success(
             message.first_arg_as_channel_name().unwrap().to_string(),
             "\
-            FeelsDankMan I'm a bot by @modelflat. \
+            FeelsDankMan I'm a bot by modelflat. \
             Prefix: '>>'. \
             Language: Rust (nightly). \
             See (>> help) for commands. \
