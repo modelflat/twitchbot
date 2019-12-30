@@ -69,30 +69,37 @@ pub(crate) async fn initialize(
     password: &str,
     channels: impl Iterator<Item = &String>,
 ) -> WebSocketStreamSink {
-    let (mut ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+    info!("Connecting to {}...", url);
+    let (mut ws_stream, _) = connect_async(url).await.expect("Failed to connect to socket");
+
+    info!(
+        "Authenticating with user name '{}', oauth token '{}'",
+        username, "*".repeat(password.len())
+    );
 
     // login to twitch IRC
     ws_stream
         .send(Message::Text(format!("PASS oauth:{}", password)))
         .await
-        .unwrap();
+        .expect("Failed to send WS message");
     ws_stream
         .send(Message::Text(format!("NICK {}", username)))
         .await
-        .unwrap();
+        .expect("Failed to send WS message");
     ws_stream
         .send(Message::Text(
             "CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership".to_owned(),
         ))
         .await
-        .unwrap();
+        .expect("Failed to send WS message");
 
     // join channels
     for channel in channels {
+        info!("Joining channel: {}", channel);
         ws_stream
             .send(Message::Text(format!("JOIN #{}", channel)))
             .await
-            .unwrap();
+            .expect("Failed to send WS message");
     }
 
     ws_stream
@@ -128,7 +135,7 @@ pub(crate) async fn receiver_event_loop<T: 'static + Send + Sync>(
                                     }
                                 }
                                 "PING" => {
-                                    info!("responding to PING...");
+                                    info!("Responding to PING...");
                                     Action::SendMessage(
                                         irc::MessageBuilder::new("PONG")
                                             .with_trailing(message.trailing.unwrap_or(""))
@@ -139,12 +146,12 @@ pub(crate) async fn receiver_event_loop<T: 'static + Send + Sync>(
                                     const MODERATOR_CD: Duration = Duration::from_millis(100);
 
                                     let channel = message.first_arg_as_channel_name().unwrap().to_string();
-                                    info!("received USERSTATE: {}", raw_message);
+                                    info!("Received USERSTATE: {}", raw_message);
 
                                     for badge in message.tag_value("badges").unwrap_or("").split_terminator(',') {
                                         if badge.starts_with("moderator") {
                                             info!(
-                                                "updated cooldown to {:?} for channel {} because of moderator status",
+                                                "Updated cooldown to {:?} for channel {} because of moderator status",
                                                 MODERATOR_CD, channel
                                             );
                                             messaging_state.cooldowns.update(&channel, MODERATOR_CD);
@@ -153,7 +160,7 @@ pub(crate) async fn receiver_event_loop<T: 'static + Send + Sync>(
                                     Action::None
                                 }
                                 cmd => {
-                                    info!("no handler for command {} / {}", cmd, message);
+                                    info!("No handler for command {} / {}", cmd, message);
                                     Action::None
                                 }
                             };
@@ -229,17 +236,17 @@ pub(crate) async fn sender_event_loop(
                     Ok(r) => match r.json::<BanphraseResponse>().await {
                         Ok(r) => {
                             if r.banned {
-                                info!("banphrase API says that message is banned -- not sending ({})", message);
+                                info!("Banphrase API says that message is banned -- not sending ({})", message);
                                 return;
                             }
                         }
                         Err(e) => {
-                            error!("weird response from banphrase API: {:?}", e);
+                            error!("Weird response from banphrase API: {:?}", e);
                             return;
                         }
                     },
                     Err(e) => {
-                        error!("failed to consult banphrase API: {:?}", e);
+                        error!("Failed to consult banphrase API: {:?}", e);
                         return;
                     }
                 }
