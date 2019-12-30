@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::pin::Pin;
 
 type Tags<'a> = BTreeMap<&'a str, Option<&'a str>>;
 
@@ -82,7 +83,7 @@ pub struct Message<'a> {
 }
 
 impl Message<'_> {
-    /// Parses given string into Twitch IRC message, but does it faster than "pest".
+    /// Parses a string into Twitch IRC message.
     pub fn parse<'a>(raw: &'a str) -> Result<Message<'a>, Box<dyn Error>> {
         fn parse_tags(raw_tags: &str) -> Tags {
             // tags are conveniently separated by a semicolon
