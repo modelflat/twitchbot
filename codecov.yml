@@ -2,7 +2,7 @@ codecov:
   require_ci_to_pass: yes
 
 ignore:
-  - "app"
+  - "app/main.rs"
   - "src/lib.rs"
 
 parsers:

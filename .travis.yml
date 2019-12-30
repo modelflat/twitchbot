@@ -25,15 +25,6 @@ script:
       --commit-sha "$(git rev-parse HEAD)";
     bash <(curl -s https://codecov.io/bash) -f codecov.json;
   - cargo clean
-  - |
-    if [ -n "${TRAVIS_TAG}" ]; then
-      echo "Deploying version: ${TRAVIS_TAG}"
-      echo ${SSH_KEY} > ssh_key
-      ssh -i ./ssh_key twitchbot@feelsdankman.com "./deploy.sh ${TRAVIS_TAG} ; exit"
-      rm -P ssh_key
-    else
-      echo "No tag found, skipping deploy step..."
-    fi
 branches:
   only:
     - master

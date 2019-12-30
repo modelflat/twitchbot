@@ -6,3 +6,7 @@
 ### TODO:
 
 * Hook system
+* Events triggered by time
+* Better message history tracking
+* API
+* CLI
